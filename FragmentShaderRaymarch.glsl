@@ -99,11 +99,12 @@ float SDFSphere(vec3 pos, vec3 center, float radius) {
 // 0. plane
 // 1. Cuboid
 // 2. Sphere
+// 3. Reflective Sphere
 struct BasicObject {
-    vec3 translate;
-    vec4 localRot;
-    vec3 scale;
     int type;
+    vec3 pos;
+    vec3 scale;
+    vec3 rot;
     vec3 color;
     vec3 offset;
 };
@@ -126,10 +127,10 @@ uniform vec2 uRes;
 
 in vec2 vXY;
     
-const int MAX_MARCHING_STEPS = 300;
+const int MAX_MARCHING_STEPS = 150;
 const float MIN_DIST = 0.0;
 const float MAX_DIST = 100.0;
-const float EPSILON = 0.001;
+const float EPSILON = 0.01;
 const float PI = 3.14159265359;
 
 out vec4 myOutputColor;
@@ -137,7 +138,7 @@ uniform float iCameraDist;
 
 // Object loading from js
 //const int MAX_OBJECTS = 7;
-const int OBJECTS_MAX = 3;
+const int OBJECTS_MAX = 6;
 //uniform int uObjectsN;
 uniform BasicObject uObjects[OBJECTS_MAX];
 //BasicObject sceneObjects[MAX_OBJECTS];
@@ -216,25 +217,28 @@ vec3 rotateZ(vec3 p, float angle) {
 //    =====>
 // Apply Y, Z, Z rotations
          //yaw,pitch, roll 
-vec3 rotateP(vec3 p, vec4 localRot) {
+vec3 rotateP(vec3 p, vec3 localRot) {
     //localRot.z is ignored
-    return rotateY(rotateZ(rotateY(p, localRot.x), localRot.y), localRot.w);
+    return rotateY(rotateZ(rotateY(p, localRot.x), localRot.y), localRot.z);
 }
 
 vec3 scale(vec3 p, vec3 s) {
     return vec3(p.x*s.x, p.y*s.y, p.z*s.z);
 }
 vec3 applyObjectState(BasicObject obj, vec3 p) {
-    // TODO: add rot YZ
-    vec3 p_trans = translate(p, obj.translate);
+    vec3 p_trans = translate(p, obj.pos);
+    vec3 p_rot = rotateP(p_trans, obj.rot);
+    vec3 p_scale = scale(p_rot, obj.scale);
     
-    vec3 p_rot = rotateP(p_trans, obj.localRot);
-    return translate(p_rot, obj.offset);
+    return translate(p_scale, obj.offset);
 }
-// Get SD to union of all scene objects
-vec4 getObjectsUnionSD(vec3 p) {
+// Holds object index
+int closestObjectIndex = -1;
+// Returns distance
+float getClosestObject(vec3 p) {
     float minDist = MAX_DIST;
-    int minI = -1;
+    closestObjectIndex = -1;
+    // Union on 3d objects: min(O1, O2, O3, ...)
     for(int i = 0; i < OBJECTS_MAX; i++) {
         float sceneSDF;
         vec3 p_obj_transform = applyObjectState(uObjects[i], p);
@@ -242,30 +246,22 @@ vec4 getObjectsUnionSD(vec3 p) {
             sceneSDF = planeY_SDF(p_obj_transform);
         }
         if(uObjects[i].type == 1) {
-            sceneSDF = boxSD(p_obj_transform, uObjects[i].scale);
+            sceneSDF = boxSD(p_obj_transform, vec3(0.5, 0.5, 0.5));
         }
         if(uObjects[i].type == 2) {
-            sceneSDF = sphereSD(p_obj_transform, uObjects[i].scale.x);
+            sceneSDF = sphereSD(p_obj_transform, 0.5);
         }
         if(sceneSDF < minDist) {
             minDist = sceneSDF;
-            minI = i;
+            closestObjectIndex = i;
         }
     }
-    return vec4(uObjects[minI].color, minDist);
+    return minDist;
 }
 
-/*
-Signed distance function that represents the whole scene
-Positive distance => outside
-0 => on the surface
-Negative distance => inside
-*/
-vec4 sceneSDF(vec3 p) {
-    return getObjectsUnionSD(p);
+float sceneSDF(vec3  p) {
+    return getClosestObject(p);
 }
-
-
 /**
  * Return the shortest distance from the eyepoint to the scene surface along
  * the marching direction. If no part of the surface is found between start and end,
@@ -277,28 +273,28 @@ vec4 sceneSDF(vec3 p) {
  * end: the max distance away from the ey to march before giving up
  */
 // X: distance, y: minDistance
-vec4 shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {
-    float depth = start;
-    float minDist = end;
-    vec3 minColor = vec3(0., 0. ,0.);
-    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
-        vec4 res = sceneSDF(eye + depth * marchingDirection);
-        float dist = res.w;
-        vec3 curColor = res.xyz;
-        if(dist < minDist) {
-            minDist = dist;
-            minColor = curColor;
-        }
-        if (dist < EPSILON) {
-			return vec4(minColor, depth);
-        }
-        depth += dist;
-        if (depth >= end) {
-            return vec4(minColor, end);
-        }
-    }
-    return vec4(minColor, end);
-}
+//vec4 shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {
+//    float depth = start;
+//    float minDist = end;
+//    vec3 minColor = vec3(0., 0. ,0.);
+//    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
+//        vec4 res = sceneSDF(eye + depth * marchingDirection);
+//        float dist = res.w;
+//        vec3 curColor = res.xyz;
+//        if(dist < minDist) {
+//            minDist = dist;
+//            minColor = curColor;
+//        }
+//        if (dist < EPSILON) {
+//            return vec4(minColor, depth);
+//        }
+//        depth += dist;
+//        if (depth >= end) {
+//            return vec4(minColor, end);
+//        }
+//    }
+//    return vec4(minColor, end);
+//}
 /**
  * Return the normalized direction to march in from the eye point for a single pixel.
  * 
@@ -315,9 +311,9 @@ vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
 // Normal of scene surface at point p
 vec3 estimateNormal(vec3 p) {
     return normalize(vec3(
-        sceneSDF(vec3(p.x + EPSILON, p.y, p.z)).w - sceneSDF(vec3(p.x - EPSILON, p.y, p.z)).w,
-        sceneSDF(vec3(p.x, p.y + EPSILON, p.z)).w - sceneSDF(vec3(p.x, p.y - EPSILON, p.z)).w,
-        sceneSDF(vec3(p.x, p.y, p.z  + EPSILON)).w - sceneSDF(vec3(p.x, p.y, p.z - EPSILON)).w
+        sceneSDF(vec3(p.x + EPSILON, p.y, p.z)) - sceneSDF(vec3(p.x - EPSILON, p.y, p.z)),
+        sceneSDF(vec3(p.x, p.y + EPSILON, p.z)) - sceneSDF(vec3(p.x, p.y - EPSILON, p.z)),
+        sceneSDF(vec3(p.x, p.y, p.z  + EPSILON)) - sceneSDF(vec3(p.x, p.y, p.z - EPSILON))
     ));
 }
 
@@ -374,6 +370,22 @@ vec3 phongLighting(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye, 
     return color;
 }
 
+//Returns depth and fill closestObjectIndex
+float raymarchDepth(vec3 p, vec3 dir, float begin_depth, float max_depth) {
+    float depth = begin_depth;
+    for(int i = 0; i < MAX_MARCHING_STEPS; i++) {
+        float dist = sceneSDF(p + depth*dir);
+        if(dist > max_depth - EPSILON) {
+            return depth;
+        }
+        if(dist < EPSILON) {
+            return depth;
+        }
+        // We can safely march with distance to closest Object
+        depth += dist;
+    }
+    return depth;
+}
 void main() {
 //    uObjects;
 //    initObjects();
@@ -388,37 +400,92 @@ void main() {
     uModelMatrix;
     vec2 fragCoord = (vXY + 0.5) *512.;
     vec3 viewDir = rayDirection(uFOV, uRes, fragCoord);
-    vec3 eye = vec3(cos(iTime/20.)*iCameraDist, iCameraDist/2., sin(iTime/20.)*iCameraDist);
     
     mat4 viewToWorld = viewMatrix(uEye, uFocus, uUp);
 //    mat4 viewToWorld = uViewMatrix;
     
     vec3 worldDir = (viewToWorld*vec4(viewDir, 0.0)).xyz;
     
-    vec4 res = shortestDistanceToSurface(uEye, worldDir, MIN_DIST, MAX_DIST);
-    float dist = res.w;
-    vec3 c = res.xyz;
+//    vec4 res = shortestDistanceToSurface(uEye, worldDir, MIN_DIST, MAX_DIST);
     
+    // Find shortest distance to surface, color and number of marching steps
     
-//    myOutputColor = texture(u_geometry_tex, (vec2(vXY.x, -vXY.y)/2.) + 0.5);
-//    myOutputColor = vec4(extractProperty(int(1), int(4)), 1.);
-//    return;
-    if (dist > MAX_DIST - EPSILON) {
+//    float depth = MIN_DIST;
+//    float minDist = MAX_DIST;
+//    vec3 minColor = vec3(0., 0. ,0.);
+//    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
+//        vec4 res = sceneSDF(uEye + depth * worldDir);
+//        float dist = res.w;
+//        vec3 curColor = res.xyz;
+//        if(dist < minDist) {
+//            minDist = dist;
+//            minColor = curColor;
+//        }
+//        if (dist < EPSILON) {
+//                // The closest point on the surface to the eyepoint along the view ray
+//            vec3 p = uEye + depth * worldDir;
+//            
+//            vec3 K_a = minColor;
+//            vec3 K_d = vec3(0.7, 0.7, 0.7);
+//            vec3 K_s = vec3(0.6, 0.6, 0.6);
+//            float shininess = 10.;
+//            
+//            vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, minColor);
+//    
+//            myOutputColor = vec4(color, 1.);
+//            return;
+//        }
+//        depth += dist;
+//        if (depth >= MAX_DIST) {
+////            if(minDist < 1.) {
+////                myOutputColor = vec4(0, 0, 0, 1);
+////                return;
+////            }
+//            myOutputColor = vec4(0.8, 0.8, 1, 1);
+//            return;
+//        }
+//    }
+        
+    float dist = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
+    if(closestObjectIndex == -1 || dist > MAX_DIST){
         myOutputColor = vec4(0.4, 0.4, 0.8, 1.);
         return;
     }
     
-    // The closest point on the surface to the eyepoint along the view ray
+    // PHONG LIGHTING FROM ONE LIGHT
     vec3 p = uEye + dist * worldDir;
-    
-    vec3 K_a = c;
+    vec3 K_a = uObjects[closestObjectIndex].color;
     vec3 K_d = vec3(0.7, 0.7, 0.7);
     vec3 K_s = vec3(0.6, 0.6, 0.6);
     float shininess = 20.;
     
-    vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, c);
-    
+    vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, uObjects[closestObjectIndex].color);
     myOutputColor = vec4(color, 1.0);
+    
+    return;
+//    myOutputColor = texture(u_geometry_tex, (vec2(vXY.x, -vXY.y)/2.) + 0.5);
+//    myOutputColor = vec4(extractProperty(int(1), int(4)), 1.);
+//    return;
+//    if (dist > MAX_DIST - EPSILON) {
+//        myOutputColor = vec4(0.4, 0.4, 0.8, 1.);
+//        return;
+//    }
+//    if(dist < EPSILON && c.x == 0. && c.y == 0. && c.z == 0.) {
+//        myOutputColor = vec4(0, 0, 0, 1);
+//        return;
+//    }
+//    
+//    // The closest point on the surface to the eyepoint along the view ray
+//    vec3 p = uEye + dist * worldDir;
+//    
+//    vec3 K_a = c;
+//    vec3 K_d = vec3(0.7, 0.7, 0.7);
+//    vec3 K_s = vec3(0.6, 0.6, 0.6);
+//    float shininess = 20.;
+//    
+//    vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, c);
+//    
+//    myOutputColor = vec4(color, 1.0);
 }
 
 ////// Old code below

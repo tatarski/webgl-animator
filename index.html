@@ -21,19 +21,6 @@
         let raymarcher,
             framebufferDrawer;
 
-
-        // Scale vector by vector
-        function scale(p, s) {
-            if (typeof(s) == "Number") {
-                s = new Array(p.length).fill(s);
-            }
-            let res = [];
-            for (let i = 0; i < p.length; i++) {
-                res.push(p[i] * s[i]);
-            }
-            return res;
-        }
-
         function add(p, p2) {
             let res = [];
             for (let i = 0; i < p.length; i++) {
@@ -105,7 +92,6 @@
 
             return multiplyMat([p], rotationMatrix)[0];
         }
-
         //    =====>
         // Apply Y, Z, Y rotations
         //yaw,pitch, roll 
@@ -114,34 +100,23 @@
             return rotateY(rotateZ(rotateY(p, localRot[0]), localRot[1]), localRot[3]);
         }
         class BasicObject {
-            constructor(size, rot, translation, type, color, offset) {
-                this.size = size;
-                this.rot = rot;
-                this.translation = translation;
+            constructor(type = 0, pos = [0, 0, 0], scale = [1, 1, 1], localRot = [0, 0, 0], color = [1, 0, 0], offset = [0, 0, 0]) {
                 this.type = type;
+                this.pos = pos;
+                this.scale = scale;
+                // Local rot is yaw-pitch-roll
+                // In radians
+                this.rot = localRot;
+                // R,G,B
                 this.color = color;
+                // Offset used in skeletal structure
                 this.offset = offset;
             }
-            // Yaw, pitch, roll
-            setRotate(y, p, r) {
-                this.rot = [y, p, 0, r];
+            getStateFromModelMatrix(modelMatrix) {
+                this.pos = [];
+                this.scale = [];
+                this.rot = [0, 0, 0];
             }
-            setTranslate(x, y, z) {
-                this.translation = [x, y, z];
-            }
-            setOffset(x, y, z) {
-                this.offset = [x, y, z];
-            }
-            setColor(r, g, b) {
-                this.color = [r, g, b];
-            }
-            setSize(x, y, z) {
-                this.size = [x, y, z];
-            }
-            setType(i) {
-                this.type = i;
-            }
-
         }
         // Store the text of the glgs programs
         let FragmentShaderDrawFramebuffer,
@@ -149,17 +124,30 @@
             VertexShader;
 
         var basicObjectList = [
-            new BasicObject([1, 3, 1], [0, 0, 0, 0], [0, 0, 0], 1, [1, 0, 0], [0, 0, 0]),
-            new BasicObject([1, 3, 1], [0, 0, 0, 0], [0, 0, 0], 1, [0, 1, 0], [0, 0, 0]),
-            new BasicObject([1, 3, 1], [0, 0, 0, 0], [0, 0, 0], 1, [0, 0, 1], [0, 0, 0])
+            new BasicObject(),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            //            new BasicObject(2, [0, 0, 0], [1, 0.5, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            //            new BasicObject(0, [0, 0.3, 0], [0, 0, 0])
         ];
+
+        function minus(v) {
+            return [-v[0], -v[1], -v[2]];
+        }
+
+        function invert(v) {
+            return [1 / v[0], 1 / v[1], 1 / v[2]];
+        }
 
         function loadUniformObject(basicObjectListI, targetI) {
             let o = basicObjectList[basicObjectListI];
-            gl.uniform3fv(window["uObjects[" + targetI + "].translate"], o.translation);
-            gl.uniform4fv(window["uObjects[" + targetI + "].localRot"], o.rot);
-            gl.uniform3fv(window["uObjects[" + targetI + "].scale"], o.size);
             gl.uniform1i(window["uObjects[" + targetI + "].type"], o.type);
+            gl.uniform3fv(window["uObjects[" + targetI + "].pos"], minus(o.pos));
+            gl.uniform3fv(window["uObjects[" + targetI + "].scale"], invert(o.scale));
+            gl.uniform3fv(window["uObjects[" + targetI + "].rot"], minus(o.rot));
             gl.uniform3fv(window["uObjects[" + targetI + "].color"], o.color);
             gl.uniform3fv(window["uObjects[" + targetI + "].offset"], o.offset);
         }
@@ -204,47 +192,6 @@
             }
 
 
-        }
-
-        function createGeometryTexture() {
-            geometryTexture = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, geometryTexture);
-
-            {
-
-                // define size and format of level 0
-                const level = 0;
-                const internalFormat = gl.RGB32F;
-
-                const border = 0;
-                const format = gl.RGB;
-                const type = gl.FLOAT;
-                const res = 64;
-                const targetTextureWidth = 64;
-                const targetTextureHeight = 64;
-                // generation of data
-
-                var data = [];
-                for (let i = 0; i < basicObjectList.length; i++) {
-                    let obj = basicObjectList[i];
-                    data = data.concat([].concat(obj.size, obj.rot, obj.translation, [obj.type, 0., 0.], obj.color));
-                    data = data.concat(new Array(res * 3 - 5 * 3).fill(1));
-                }
-                data = data.concat(new Array((res - basicObjectList.length) * res * 3).fill(1));
-                gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-                    targetTextureWidth, targetTextureHeight, border,
-                    format, type, new Float32Array(data));
-
-                gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-                // set the filtering so we don't need mips
-                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                // Create and bind the framebuffer
-
-
-            }
         }
 
         function getFile(fname) {
@@ -307,6 +254,7 @@
 
                 // Begin animation
                 drawFrame();
+                setInterval(update, 10);
             }).catch(function(errText) {
                 console.log(errText);
             });
@@ -438,10 +386,6 @@
             return res;
         }
 
-        function getRotVector(basicObj) {
-            return [basicObj.rot[0], basicObj.rot[1], basicObj.rot[2]];
-        }
-
         class Bone {
             constructor(children, parent, obj) {
                 this.parent = parent;
@@ -464,47 +408,20 @@
         }
 
         function update() {
-            let p = cloneArr(basicObjectList[1].translation),
-                r = cloneArr(basicObjectList[1].rot);
+            let base = basicObjectList[0],
+                child1 = basicObjectList[1],
+                child2 = basicObjectList[2];
 
-            p = add([0, basicObjectList[1].size[1], 0], p)
-            p = rotateP(p, basicObjectList[1].rot);
-
-            basicObjectList[1].setRotate(
-                0,
-                Math.sin(updates / 50) * 0.4 * Math.PI,
-                0);
-
-            let r0 = [0,
-                Math.sin(updates / 20) * 0.4 * Math.PI,
-                0, updates / 20
-            ];
-            r = add(r0, r);
-            basicObjectList[0].setRotate(r[0], r[1], r[3]);
-            basicObjectList[0].setTranslate(p[0], p[1], p[2]);
-            basicObjectList[0].setOffset(0, 3, 0);
-
-            p = [0, 0, 0];
-            p = add(p, [0, basicObjectList[1].size[1], 0]);
-            p = rotateP(p, basicObjectList[1].rot);
-            let s = [0, basicObjectList[0].size[1], 0];
-
-            basicObjectList[2].setTranslate(p[0] + s[0], p[1] + s[1], p[2] + s[2]);
-            basicObjectList[2].setOffset(0, 3, 0);
-
-
-            //            basicObjectList[0].setTranslate(0, 0, 0);
-            //            basicObjectList[0].setRotate(
-            //                Math.sin(updates / 50) * 0.5 * Math.PI,
-            //                Math.PI * 0.5,
-            //                updates / 20);
-
-
+            for (let i = 1; i < basicObjectList.length; i++) {
+                let cur = basicObjectList[i];
+                cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
+                cur.scale = [2, 2, 2];
+                cur.pos = [i * 3, Math.abs(Math.sin(updates / 100)) * 10 + 1, 0];
+            }
             updates++;
 
             zoomCur += (zoom - zoomCur) / 20;
         }
-        setInterval(update, 10);
 
     </script>
 </head>

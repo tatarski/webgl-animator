@@ -540,7 +540,16 @@ function useMatrix() {
         gl.uniformMatrix4fv(uModelMatrix, false, glmat);
     }
 }
-
+// Added: get currrent object matrix 
+function getMatrix() {
+    if (glmatnew) {
+        glmatnew = false;
+        return glmat;
+    } else {
+        //                             Identity
+        return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    }
+}
 
 // добавя въртене около X към матрицата на модела
 function xRotate(a) {
