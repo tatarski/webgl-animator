@@ -1,0 +1,523 @@
+﻿<!DOCTYPE html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Raymarching!</title>
+
+    <script src="webgl-fmi.js"></script>
+    <script src="shaders.js"></script>
+    <script>
+        let zoom = 20,
+            zoomCur = 10;
+        let updates = 0;
+        // Canvas element
+        let canvas;
+        let framebuffer;
+        let targetTexture;
+        let geometryTexture,
+            eye = [3, 3, 3],
+            cameraRotXZ = 0,
+            cameraRotY = 0,
+            cameraRadius = 3;
+        let raymarcher,
+            framebufferDrawer;
+
+
+        // Scale vector by vector
+        function scale(p, s) {
+            if (typeof(s) == "Number") {
+                s = new Array(p.length).fill(s);
+            }
+            let res = [];
+            for (let i = 0; i < p.length; i++) {
+                res.push(p[i] * s[i]);
+            }
+            return res;
+        }
+
+        function add(p, p2) {
+            let res = [];
+            for (let i = 0; i < p.length; i++) {
+                res[i] = p[i] + p2[i];
+            }
+            return res;
+        }
+        // Sum of vector
+        function sum(p) {
+            let res = 0;
+            for (let i = 0; i < p.length; i++) {
+                res += p[i];
+            }
+            return res;
+        }
+
+        // Transpose matrix
+        function transpose(mat) {
+            let res = [];
+            for (let i = 0; i < mat[0].length; i++) {
+                res[i] = [];
+            }
+            for (let i = 0; i < mat.length; i++) {
+                for (let j = 0; j < mat[i].length; j++) {
+                    res[j][i] = mat[i][j];
+                }
+            }
+            return res;
+        }
+
+        // Multiply two matricies
+        function multiplyMat(mat1, mat2) {
+            let t_mat2 = transpose(mat2);
+            let res = [];
+            for (let i = 0; i < mat1.length; i++) {
+                res[i] = [];
+                for (let j = 0; j < t_mat2.length; j++) {
+                    res[i][j] = sum(scale(mat1[i], t_mat2[j]));
+                }
+            }
+            return res;
+        }
+        // X rot
+        function rotateX(p, angle) {
+            let rotationMatrix = [
+                [1., 0., 0.],
+                [0., cos(angle), -sin(angle)],
+                [0., sin(angle), cos(angle)]
+            ];
+            return multiplyMat([p], rotationMatrix)[0];
+        }
+        // Y rot
+        function rotateY(p, angle) {
+            let rotationMatrix = [
+                [cos(angle), 0., sin(angle)],
+                [0., 1., 0.],
+                [-sin(angle), 0., cos(angle)]
+            ];
+
+            return multiplyMat([p], rotationMatrix)[0];
+        }
+        // Z rot
+        function rotateZ(p, angle) {
+            let rotationMatrix = [
+                [cos(angle), -sin(angle), 0.],
+                [sin(angle), cos(angle), 0.],
+                [0., 0., 1.]
+            ];
+
+            return multiplyMat([p], rotationMatrix)[0];
+        }
+
+        //    =====>
+        // Apply Y, Z, Y rotations
+        //yaw,pitch, roll 
+        function rotateP(p, localRot) {
+            //localRot.z is ignored
+            return rotateY(rotateZ(rotateY(p, localRot[0]), localRot[1]), localRot[3]);
+        }
+        class BasicObject {
+            constructor(size, rot, translation, type, color, offset) {
+                this.size = size;
+                this.rot = rot;
+                this.translation = translation;
+                this.type = type;
+                this.color = color;
+                this.offset = offset;
+            }
+            // Yaw, pitch, roll
+            setRotate(y, p, r) {
+                this.rot = [y, p, 0, r];
+            }
+            setTranslate(x, y, z) {
+                this.translation = [x, y, z];
+            }
+            setOffset(x, y, z) {
+                this.offset = [x, y, z];
+            }
+            setColor(r, g, b) {
+                this.color = [r, g, b];
+            }
+            setSize(x, y, z) {
+                this.size = [x, y, z];
+            }
+            setType(i) {
+                this.type = i;
+            }
+
+        }
+        // Store the text of the glgs programs
+        let FragmentShaderDrawFramebuffer,
+            FragmentShaderRaymarch,
+            VertexShader;
+
+        var basicObjectList = [
+            new BasicObject([1, 3, 1], [0, 0, 0, 0], [0, 0, 0], 1, [1, 0, 0], [0, 0, 0]),
+            new BasicObject([1, 3, 1], [0, 0, 0, 0], [0, 0, 0], 1, [0, 1, 0], [0, 0, 0]),
+            new BasicObject([1, 3, 1], [0, 0, 0, 0], [0, 0, 0], 1, [0, 0, 1], [0, 0, 0])
+        ];
+
+        function loadUniformObject(basicObjectListI, targetI) {
+            let o = basicObjectList[basicObjectListI];
+            gl.uniform3fv(window["uObjects[" + targetI + "].translate"], o.translation);
+            gl.uniform4fv(window["uObjects[" + targetI + "].localRot"], o.rot);
+            gl.uniform3fv(window["uObjects[" + targetI + "].scale"], o.size);
+            gl.uniform1i(window["uObjects[" + targetI + "].type"], o.type);
+            gl.uniform3fv(window["uObjects[" + targetI + "].color"], o.color);
+            gl.uniform3fv(window["uObjects[" + targetI + "].offset"], o.offset);
+        }
+
+        function loadUniformAllObjects() {
+            for (let i = 0; i < basicObjectList.length; i++) {
+                loadUniformObject(i, i);
+            }
+        }
+
+        function createFramebuffer() {
+            // create to render to
+            const targetTextureWidth = 512;
+            const targetTextureHeight = 512;
+            targetTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+
+            {
+                // define size and format of level 0
+                const level = 0;
+                const internalFormat = gl.RGBA;
+                const border = 0;
+                const format = gl.RGBA;
+                const type = gl.UNSIGNED_BYTE;
+                const data = null;
+                gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                    targetTextureWidth, targetTextureHeight, border,
+                    format, type, data);
+
+                // set the filtering so we don't need mips
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                // Create and bind the framebuffer
+                framebuffer = gl.createFramebuffer();
+                gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+                // attach the texture as the first color attachment
+                const attachmentPoint = gl.COLOR_ATTACHMENT0;
+                gl.framebufferTexture2D(
+                    gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
+            }
+
+
+        }
+
+        function createGeometryTexture() {
+            geometryTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, geometryTexture);
+
+            {
+
+                // define size and format of level 0
+                const level = 0;
+                const internalFormat = gl.RGB32F;
+
+                const border = 0;
+                const format = gl.RGB;
+                const type = gl.FLOAT;
+                const res = 64;
+                const targetTextureWidth = 64;
+                const targetTextureHeight = 64;
+                // generation of data
+
+                var data = [];
+                for (let i = 0; i < basicObjectList.length; i++) {
+                    let obj = basicObjectList[i];
+                    data = data.concat([].concat(obj.size, obj.rot, obj.translation, [obj.type, 0., 0.], obj.color));
+                    data = data.concat(new Array(res * 3 - 5 * 3).fill(1));
+                }
+                data = data.concat(new Array((res - basicObjectList.length) * res * 3).fill(1));
+                gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                    targetTextureWidth, targetTextureHeight, border,
+                    format, type, new Float32Array(data));
+
+                gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+                // set the filtering so we don't need mips
+                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                // Create and bind the framebuffer
+
+
+            }
+        }
+
+        function getFile(fname) {
+            return new Promise(function(resolve, reject) {
+                var client = new XMLHttpRequest();
+                client.open('GET', fname);
+                client.onreadystatechange = function() {
+                    if (client.readyState == 4) {
+                        if (client.status == 200) {
+                            resolve(client.responseText);
+                        } else {
+                            reject("Unable to load file " + fname);
+                        }
+                    }
+                }
+                client.send();
+            })
+        }
+
+        function passObjectData() {
+
+        }
+        // Setup canvas
+        function getCanvas() {
+            canvas = document.getElementById("canvasId");
+            canvas.addEventListener('webglcontextlost', function(event) {
+                event.preventDefault();
+            }, false);
+            canvas.addEventListener('webglcontextrestored', function() {
+                init();
+            }, false);
+        }
+
+        function onload() {
+            getFile("VertexShader.glsl").then(function(contents) {
+                VertexShader = contents;
+                return getFile("FragmentShaderDrawFramebuffer.glsl");
+            }).then(function(contents) {
+                FragmentShaderDrawFramebuffer = contents;
+                return getFile("FragmentShaderRaymarch.glsl");
+            }).then(function(contents) {
+                FragmentShaderRaymarch = contents;
+                getCanvas();
+
+                // Get context
+                gl = getContext("canvasId");
+                // For Float32 RGB Geometry texture
+                gl.getExtension('OES_texture_float');
+                gl.getExtension('OES_texture_float_linear');
+
+                gl.enable(gl.DEPTH_TEST);
+                gl.clearColor(0.85, 0.95, 0.95, 1);
+
+                // Framebuffer to render to
+                createFramebuffer();
+                // Raymarcher to draw on framebuffer
+                raymarcher = new RayMarcher();
+                // canvasDrawer to draw framebuffer on canvas
+                canvasDrawer = new CanvasDrawer();
+
+                // Begin animation
+                drawFrame();
+            }).catch(function(errText) {
+                console.log(errText);
+            });
+
+        }
+
+        class RayMarcher {
+            constructor() {
+                // Create geometry texture if needed
+                //                createGeometryTexture();
+                this.program = getProgram(
+                    VertexShader,
+                    FragmentShaderRaymarch);
+                // 
+                let data = [-1, -1, -1, 1, 1, 1, 1, -1];
+                // 
+                let buf = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+
+                // запомняме n и буфера
+                this.buf = buf;
+
+            }
+            draw() {
+                // Main animation function
+                glprog = this.program;
+                gl.useProgram(this.program);
+
+                getVariables();
+
+                loadUniformAllObjects();
+                zoom = 20 + 7 * Math.cos(updates / 300);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+                gl.bindTexture(gl.TEXTURE_2D, geometryTexture);
+
+                gl.viewport(0, 0, 512, 512);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+
+                lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
+
+
+                //                gl.uniform1i(u_geometry_tex, 0);
+
+
+                gl.enableVertexAttribArray(aXY);
+                gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
+                gl.uniform1f(iTime, updates / 20);
+                //                gl.uniform1f(iCameraDist, zoomCur);
+                gl.uniform1f(uFOV, 45.);
+                gl.uniform2fv(uRes, [512, 512]);
+
+                //                gl.uniform1i(uObjectsN, basicObjectList.length);
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+
+                // Unbind framebuffer and texture after each draw
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+
+            }
+        }
+        // Draws from framebuffer to canvas
+        class CanvasDrawer {
+            constructor() {
+                this.program = getProgram(VertexShader, FragmentShaderDrawFramebuffer);
+
+                let data = [-1, -1, -1, 1, 1, 1, 1, -1];
+                let buf = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+                this.buf = buf;
+            }
+            draw() {
+                glprog = this.program;
+                gl.useProgram(this.program);
+                getVariables();
+                gl.uniform1i(uTexUnit, 0);
+
+                // Draw 
+                gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+                gl.viewport(0, 0, 512, 512);
+                gl.enableVertexAttribArray(aXY);
+                gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
+
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+            }
+        }
+
+        function dumpPixels() {
+            var pixels = new Uint8Array(512 * 512 * 4);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            gl.readPixels(0, 0, 512, 512, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        }
+        var frame = 0;
+
+        function drawFrame() {
+            frame++;
+            gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
+            // включване на програмата с шейдърите по Гуро
+            // switchProgram(glGouraud);
+            // a1.draw();
+
+            // включване на програмата с шейдърите по Фонг
+            // switchProgram(glPhong);
+            // gl.uniform3f(uSpecularColor, 1, 1, 1);
+            // gl.uniform1f(uShininess, 3);
+            // a2.draw();
+
+            raymarcher.draw();
+            canvasDrawer.draw();
+
+            requestAnimationFrame(drawFrame);
+        }
+
+        function cloneArr(arr) {
+            let res = [];
+            for (let i = 0; i < arr.length; i++) {
+                res.push(arr[i]);
+            }
+            return res;
+        }
+
+        function getRotVector(basicObj) {
+            return [basicObj.rot[0], basicObj.rot[1], basicObj.rot[2]];
+        }
+
+        class Bone {
+            constructor(children, parent, obj) {
+                this.parent = parent;
+                this.children = children;
+                this.obj = obj;
+                this.relativeRot = [];
+                this.offset = [];
+            }
+            updateObject() {
+                if (this.parent != undefined) {
+
+                }
+            }
+
+        }
+        class Skeleton {
+            constructor(root) {
+                this.root = root;
+            }
+        }
+
+        function update() {
+            let p = cloneArr(basicObjectList[1].translation),
+                r = cloneArr(basicObjectList[1].rot);
+
+            p = add([0, basicObjectList[1].size[1], 0], p)
+            p = rotateP(p, basicObjectList[1].rot);
+
+            basicObjectList[1].setRotate(
+                0,
+                Math.sin(updates / 50) * 0.4 * Math.PI,
+                0);
+
+            let r0 = [0,
+                Math.sin(updates / 20) * 0.4 * Math.PI,
+                0, updates / 20
+            ];
+            r = add(r0, r);
+            basicObjectList[0].setRotate(r[0], r[1], r[3]);
+            basicObjectList[0].setTranslate(p[0], p[1], p[2]);
+            basicObjectList[0].setOffset(0, 3, 0);
+
+            p = [0, 0, 0];
+            p = add(p, [0, basicObjectList[1].size[1], 0]);
+            p = rotateP(p, basicObjectList[1].rot);
+            let s = [0, basicObjectList[0].size[1], 0];
+
+            basicObjectList[2].setTranslate(p[0] + s[0], p[1] + s[1], p[2] + s[2]);
+            basicObjectList[2].setOffset(0, 3, 0);
+
+
+            //            basicObjectList[0].setTranslate(0, 0, 0);
+            //            basicObjectList[0].setRotate(
+            //                Math.sin(updates / 50) * 0.5 * Math.PI,
+            //                Math.PI * 0.5,
+            //                updates / 20);
+
+
+            updates++;
+
+            zoomCur += (zoom - zoomCur) / 20;
+        }
+        setInterval(update, 10);
+
+    </script>
+</head>
+
+<body onload="onload()">
+    <h2>Ray Marching</h2>
+
+    <noscript>
+        Искаме JavaScript, но няма!
+    </noscript>
+
+    <canvas id="canvasId" width="512" height="512" style="border: solid;">
+        Искаме canvas, но няма!
+    </canvas>
+</body>
