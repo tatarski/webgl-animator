@@ -56,16 +56,6 @@ float cubeSD(vec3 p, vec3 s) {
 float cyllinderSDF(vec3 p, float radius, float height) {
     vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(radius, height);
     return min(max(d.x, d.y), 0.) + length(max(d, 0.));
-//    float distToCyllinder = length(p.xz);
-//    if(abs(p.y) > height) {
-//        if(distToCyllinder > radius) {
-//            return length(vec2(distToCyllinder - radius, p.y - height));
-//        } else {
-//            return abs(p.y) - height;
-//        }
-//    } else {
-//        return distToCyllinder - radius;
-//    }
 }
 
 float torusSDF(vec3 p, float ringRadius, float torusRadius) {
@@ -136,51 +126,10 @@ const float PI = 3.14159265359;
 out vec4 myOutputColor;
 uniform float iCameraDist;
 
-// Object loading from js
-//const int MAX_OBJECTS = 7;
-const int OBJECTS_MAX = 6;
+// Object to loading from js
+const int OBJECTS_MAX = OBJECTS_MAX_TOKEN;
 //uniform int uObjectsN;
 uniform BasicObject uObjects[OBJECTS_MAX];
-//BasicObject sceneObjects[MAX_OBJECTS];
-
-// Local definitions of objects to be added to sceneObjectsArray
-
-// Fill array with BasicObjects
-//void initLocalObjects() {
-//    BasicObject groundPlane = BasicObject(vec3(0., 15., 0.), vec3(0., 0., 0.), vec3(1., 1., 1.), 0, vec3(1., 0., 0.));
-//    BasicObject cube1 = BasicObject(vec3(0., -6. + 6.*sin(iTime), 0.), vec3(iTime, 0., 0.), vec3(2., 2., 2.), 1, vec3(0., 1., 0.));
-//    BasicObject sphere1 = BasicObject(vec3(0., -6., 0.), vec3(0., 0., 0.), vec3(1., 1., 1.), 2, vec3(0., 0., 1.));
-//    BasicObject sphere2 = BasicObject(vec3(-3., -6., 0.), vec3(0., 0., 0.), vec3(1., 1., 1.), 2, vec3(1., 1., 1.));
-//    BasicObject sphere3 = BasicObject(vec3(3., -6., 0.), vec3(0., 0., 0.), vec3(1., 1., 1.), 2, vec3(0., 1., 1.));
-//    BasicObject sphere4 = BasicObject(vec3(0., -6., -3.), vec3(0., 0., 0.), vec3(1., 1., 1.), 2, vec3(1., 0., 1.));
-//    BasicObject sphere5 = BasicObject(vec3(0., -6., 3.), vec3(0., 0., 0.), vec3(1., 1., 1.), 2, vec3(1., 0.5, 0.3));
-//
-//    sceneObjects[0] = groundPlane;
-//    sceneObjects[1] = cube1;
-//    sceneObjects[2] = sphere1;
-//    sceneObjects[3] = sphere2;
-//    sceneObjects[4] = sphere3;
-//    sceneObjects[5] = sphere4;
-//    sceneObjects[6] = sphere5;
-//}
-
-////// Trying to load custom object positions from js
-//vec3 extractProperty(int i, int n) {
-//    return texture(u_geometry_tex, vec2(float(n)/64., float(i)/64.)).xyz;
-//}
-//
-//void extractObjectsFromTexture() {
-//    for(int i = 0; i < MAX_OBJECTS; i++) {
-//        sceneObjects[i] = BasicObject(
-//            extractProperty(i, 2),
-//            extractProperty(i, 1),
-//            extractProperty(i, 0),
-//            int(extractProperty(i, 3).x),
-//            extractProperty(i, 4));
-//    }
-//}
-
-
 // Sd transformations
 vec3 translate(vec3 p, vec3 d) {
     return p + d;
@@ -262,46 +211,7 @@ float getClosestObject(vec3 p) {
 float sceneSDF(vec3  p) {
     return getClosestObject(p);
 }
-/**
- * Return the shortest distance from the eyepoint to the scene surface along
- * the marching direction. If no part of the surface is found between start and end,
- * return end.
- * 
- * eye: the eye point, acting as the origin of the ray
- * marchingDirection: the normalized direction to march in
- * start: the starting distance away from the eye
- * end: the max distance away from the ey to march before giving up
- */
-// X: distance, y: minDistance
-//vec4 shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {
-//    float depth = start;
-//    float minDist = end;
-//    vec3 minColor = vec3(0., 0. ,0.);
-//    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
-//        vec4 res = sceneSDF(eye + depth * marchingDirection);
-//        float dist = res.w;
-//        vec3 curColor = res.xyz;
-//        if(dist < minDist) {
-//            minDist = dist;
-//            minColor = curColor;
-//        }
-//        if (dist < EPSILON) {
-//            return vec4(minColor, depth);
-//        }
-//        depth += dist;
-//        if (depth >= end) {
-//            return vec4(minColor, end);
-//        }
-//    }
-//    return vec4(minColor, end);
-//}
-/**
- * Return the normalized direction to march in from the eye point for a single pixel.
- * 
- * fieldOfView: vertical field of view in degrees
- * size: resolution of the output image
- * fragCoord: the x,y coordinate of the pixel in the output image
- */
+
 vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
     vec2 xy = fragCoord - size / 2.0;
     float z = size.y / tan(radians(fieldOfView) / 2.0);
@@ -340,8 +250,6 @@ vec3 phongLightSingle(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye,
     return lightIntensity * (k_d * dotLN + k_s * pow(dotRV, alpha));
 }
 
-
-// Get color with phong lighting
 vec3 phongLighting(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye, vec3 k_obj) {
     vec3 ambientLight = 0.5 * vec3(1., 1., 1.);
     vec3 color = ambientLight * k_a;
@@ -387,14 +295,6 @@ float raymarchDepth(vec3 p, vec3 dir, float begin_depth, float max_depth) {
     return depth;
 }
 void main() {
-//    uObjects;
-//    initObjects();
-//    loadObjects();
-    
-    // Old functions for object loading
-//    extractObjectsFromTexture();
-//    initLocalObjects();
-    
     uViewMatrix;
     iCameraDist;
     uModelMatrix;
@@ -402,56 +302,15 @@ void main() {
     vec3 viewDir = rayDirection(uFOV, uRes, fragCoord);
     
     mat4 viewToWorld = viewMatrix(uEye, uFocus, uUp);
-//    mat4 viewToWorld = uViewMatrix;
     
     vec3 worldDir = (viewToWorld*vec4(viewDir, 0.0)).xyz;
     
-//    vec4 res = shortestDistanceToSurface(uEye, worldDir, MIN_DIST, MAX_DIST);
-    
-    // Find shortest distance to surface, color and number of marching steps
-    
-//    float depth = MIN_DIST;
-//    float minDist = MAX_DIST;
-//    vec3 minColor = vec3(0., 0. ,0.);
-//    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
-//        vec4 res = sceneSDF(uEye + depth * worldDir);
-//        float dist = res.w;
-//        vec3 curColor = res.xyz;
-//        if(dist < minDist) {
-//            minDist = dist;
-//            minColor = curColor;
-//        }
-//        if (dist < EPSILON) {
-//                // The closest point on the surface to the eyepoint along the view ray
-//            vec3 p = uEye + depth * worldDir;
-//            
-//            vec3 K_a = minColor;
-//            vec3 K_d = vec3(0.7, 0.7, 0.7);
-//            vec3 K_s = vec3(0.6, 0.6, 0.6);
-//            float shininess = 10.;
-//            
-//            vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, minColor);
-//    
-//            myOutputColor = vec4(color, 1.);
-//            return;
-//        }
-//        depth += dist;
-//        if (depth >= MAX_DIST) {
-////            if(minDist < 1.) {
-////                myOutputColor = vec4(0, 0, 0, 1);
-////                return;
-////            }
-//            myOutputColor = vec4(0.8, 0.8, 1, 1);
-//            return;
-//        }
-//    }
-        
-    float dist = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
+   float dist = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
+    // Out of bounds or no closest object found
     if(closestObjectIndex == -1 || dist > MAX_DIST){
         myOutputColor = vec4(0.4, 0.4, 0.8, 1.);
         return;
     }
-    
     // PHONG LIGHTING FROM ONE LIGHT
     vec3 p = uEye + dist * worldDir;
     vec3 K_a = uObjects[closestObjectIndex].color;
@@ -463,55 +322,5 @@ void main() {
     myOutputColor = vec4(color, 1.0);
     
     return;
-//    myOutputColor = texture(u_geometry_tex, (vec2(vXY.x, -vXY.y)/2.) + 0.5);
-//    myOutputColor = vec4(extractProperty(int(1), int(4)), 1.);
-//    return;
-//    if (dist > MAX_DIST - EPSILON) {
-//        myOutputColor = vec4(0.4, 0.4, 0.8, 1.);
-//        return;
-//    }
-//    if(dist < EPSILON && c.x == 0. && c.y == 0. && c.z == 0.) {
-//        myOutputColor = vec4(0, 0, 0, 1);
-//        return;
-//    }
-//    
-//    // The closest point on the surface to the eyepoint along the view ray
-//    vec3 p = uEye + dist * worldDir;
-//    
-//    vec3 K_a = c;
-//    vec3 K_d = vec3(0.7, 0.7, 0.7);
-//    vec3 K_s = vec3(0.6, 0.6, 0.6);
-//    float shininess = 20.;
-//    
-//    vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, c);
-//    
-//    myOutputColor = vec4(color, 1.0);
+
 }
-
-////// Old code below
-
-
-//float sceneSDF_OLD(vec3 p) {
-//              // Rotation    // Translation
-//    vec3 p_r = rotateX(p/2., PI/2.);
-//    vec3 p_t_1 = p - vec3(3., 3., 3.);
-//    vec3 p_t_2 = p - vec3(-3., 3., -3.);
-//    vec3 p_torus = p - vec3(0., 6., 0.);
-//    vec3 p_torus2 = p - vec3(0., 2., 0.);
-//    vec3 p_sphere= p - vec3(sin(iTime)*3.,  3. + 3.*cos(iTime/20.), cos(iTime)*3.);
-////    vec3 p_t = twist(p);
-//    return unionSDF(
-////                roundSDF(cubeSDF(p_t), 0.1),
-////                cyllinderSDF(p_t, 1., 2.),
-////                roundSDF(cyllinderSDF(p_t, 0.5, 1.), 0.2),
-//        smin(unionSDF(unionSDF(
-//            smin(roundSDF(cubeSDF(p_r, vec3(2., 2., 1.)), 0.2),  -torusWavesSDF(p_torus2, 1., 5.), -0.5),
-//            torusWavesSDF(p_torus, 1., 4.)),
-//                 unionSDF(
-//                     cyllinderSDF(p_t_1, 0.4, 3.),
-//                     cyllinderSDF(p_t_2, 0.4, 3.)
-//                 )),
-//             -sphereSDF(p_sphere, 2.), -1.),
-//        planeY_SDF(wobble(p) + 10.)
-//    );
-//}

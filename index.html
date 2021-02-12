@@ -165,31 +165,29 @@
             targetTexture = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, targetTexture);
 
-            {
-                // define size and format of level 0
-                const level = 0;
-                const internalFormat = gl.RGBA;
-                const border = 0;
-                const format = gl.RGBA;
-                const type = gl.UNSIGNED_BYTE;
-                const data = null;
-                gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-                    targetTextureWidth, targetTextureHeight, border,
-                    format, type, data);
+            // define size and format of level 0
+            const level = 0;
+            const internalFormat = gl.RGBA;
+            const border = 0;
+            const format = gl.RGBA;
+            const type = gl.UNSIGNED_BYTE;
+            const data = null;
+            gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                targetTextureWidth, targetTextureHeight, border,
+                format, type, data);
 
-                // set the filtering so we don't need mips
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                // Create and bind the framebuffer
-                framebuffer = gl.createFramebuffer();
-                gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            // set the filtering so we don't need mips
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            // Create and bind the framebuffer
+            framebuffer = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 
-                // attach the texture as the first color attachment
-                const attachmentPoint = gl.COLOR_ATTACHMENT0;
-                gl.framebufferTexture2D(
-                    gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
-            }
+            // attach the texture as the first color attachment
+            const attachmentPoint = gl.COLOR_ATTACHMENT0;
+            gl.framebufferTexture2D(
+                gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
 
 
         }
@@ -233,7 +231,9 @@
                 FragmentShaderDrawFramebuffer = contents;
                 return getFile("FragmentShaderRaymarch.glsl");
             }).then(function(contents) {
-                FragmentShaderRaymarch = contents;
+
+                FragmentShaderRaymarch = contents.replace("OBJECTS_MAX_TOKEN", basicObjectList.length);
+                console.log(FragmentShaderRaymarch);
                 getCanvas();
 
                 // Get context
@@ -348,30 +348,9 @@
             }
         }
 
-        function dumpPixels() {
-            var pixels = new Uint8Array(512 * 512 * 4);
-
-            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-            gl.readPixels(0, 0, 512, 512, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-
-            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-        }
-        var frame = 0;
 
         function drawFrame() {
-            frame++;
             gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
-            // включване на програмата с шейдърите по Гуро
-            // switchProgram(glGouraud);
-            // a1.draw();
-
-            // включване на програмата с шейдърите по Фонг
-            // switchProgram(glPhong);
-            // gl.uniform3f(uSpecularColor, 1, 1, 1);
-            // gl.uniform1f(uShininess, 3);
-            // a2.draw();
-
             raymarcher.draw();
             canvasDrawer.draw();
 
@@ -384,27 +363,6 @@
                 res.push(arr[i]);
             }
             return res;
-        }
-
-        class Bone {
-            constructor(children, parent, obj) {
-                this.parent = parent;
-                this.children = children;
-                this.obj = obj;
-                this.relativeRot = [];
-                this.offset = [];
-            }
-            updateObject() {
-                if (this.parent != undefined) {
-
-                }
-            }
-
-        }
-        class Skeleton {
-            constructor(root) {
-                this.root = root;
-            }
         }
 
         function update() {
