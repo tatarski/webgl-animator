@@ -5,6 +5,7 @@
     <title>Raymarching!</title>
 
     <script src="webgl-fmi.js"></script>
+    <script src="utility.js"></script>
     <script>
         let zoom = 20,
             zoomCur = 10;
@@ -18,87 +19,9 @@
             cameraRotXZ = 0,
             cameraRotY = 0,
             cameraRadius = 3;
-        let raymarcher,
-            framebufferDrawer;
+        let raymarcher;
 
-        function add(p, p2) {
-            let res = [];
-            for (let i = 0; i < p.length; i++) {
-                res[i] = p[i] + p2[i];
-            }
-            return res;
-        }
-        // Sum of vector
-        function sum(p) {
-            let res = 0;
-            for (let i = 0; i < p.length; i++) {
-                res += p[i];
-            }
-            return res;
-        }
 
-        // Transpose matrix
-        function transpose(mat) {
-            let res = [];
-            for (let i = 0; i < mat[0].length; i++) {
-                res[i] = [];
-            }
-            for (let i = 0; i < mat.length; i++) {
-                for (let j = 0; j < mat[i].length; j++) {
-                    res[j][i] = mat[i][j];
-                }
-            }
-            return res;
-        }
-
-        // Multiply two matricies
-        function multiplyMat(mat1, mat2) {
-            let t_mat2 = transpose(mat2);
-            let res = [];
-            for (let i = 0; i < mat1.length; i++) {
-                res[i] = [];
-                for (let j = 0; j < t_mat2.length; j++) {
-                    res[i][j] = sum(scale(mat1[i], t_mat2[j]));
-                }
-            }
-            return res;
-        }
-        // X rot
-        function rotateX(p, angle) {
-            let rotationMatrix = [
-                [1., 0., 0.],
-                [0., cos(angle), -sin(angle)],
-                [0., sin(angle), cos(angle)]
-            ];
-            return multiplyMat([p], rotationMatrix)[0];
-        }
-        // Y rot
-        function rotateY(p, angle) {
-            let rotationMatrix = [
-                [cos(angle), 0., sin(angle)],
-                [0., 1., 0.],
-                [-sin(angle), 0., cos(angle)]
-            ];
-
-            return multiplyMat([p], rotationMatrix)[0];
-        }
-        // Z rot
-        function rotateZ(p, angle) {
-            let rotationMatrix = [
-                [cos(angle), -sin(angle), 0.],
-                [sin(angle), cos(angle), 0.],
-                [0., 0., 1.]
-            ];
-
-            return multiplyMat([p], rotationMatrix)[0];
-        }
-        //    =====>
-        // Apply Y, Z, Y rotations
-        //yaw,pitch, roll 
-        function rotateP(p, localRot) {
-            //localRot.z is ignored
-            return rotateY(rotateZ(rotateY(p, localRot[0]), localRot[1]), localRot[3]);
-        }
         class BasicObject {
             constructor(type = 0, pos = [0, 0, 0], scale = [1, 1, 1], localRot = [0, 0, 0], color = [1, 0, 0], offset = [0, 0, 0]) {
                 this.type = type;
@@ -125,11 +48,11 @@
 
         var basicObjectList = [
             new BasicObject(),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 1], [0, 0, 0]),
             new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
-            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
-            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
-            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
-            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 0], [0, 0, 0]),
+            new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 1], [0, 0, 0]),
+            new BasicObject(3, [0, 2, 0], [3, 3, 3], [0, 0, 0], [1, 1, 0], [0, 0, 0]),
             //            new BasicObject(2, [0, 0, 0], [1, 0.5, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
             //            new BasicObject(0, [0, 0.3, 0], [0, 0, 0])
         ];
@@ -196,7 +119,6 @@
             }).then(function(contents) {
 
                 FragmentShaderRaymarch = contents.replace("OBJECTS_MAX_TOKEN", basicObjectList.length);
-                console.log(FragmentShaderRaymarch);
                 getCanvas();
 
                 // Get context
@@ -216,7 +138,6 @@
             }).catch(function(errText) {
                 console.log(errText);
             });
-
         }
         class RayMarcher {
             constructor() {
@@ -236,6 +157,8 @@
                 this.buf = buf;
 
             }
+
+
             draw() {
                 // Main animation function
                 glprog = this.program;
@@ -259,7 +182,7 @@
 
                 gl.enableVertexAttribArray(aXY);
                 gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
-                //                gl.uniform1f(iTime, updates / 20);
+                gl.uniform1f(iTime, updates / 20);
                 //                gl.uniform1f(iCameraDist, zoomCur);
                 gl.uniform1f(uFOV, 45.);
                 gl.uniform1i(uUseAmbient, true);
@@ -292,13 +215,14 @@
                 child1 = basicObjectList[1],
                 child2 = basicObjectList[2];
 
-            for (let i = 1; i < basicObjectList.length - 1; i++) {
+            for (let i = 1; i < 5; i++) {
                 let cur = basicObjectList[i];
                 cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
                 cur.scale = [2, 2, 2];
-                cur.pos = [i * 3, Math.abs(Math.sin(updates / 100)) * 10 + 1, 0];
+                let angle = i * (Math.PI * 2) / 5;
+                cur.pos = [Math.cos(updates / 200 + angle) * 6, Math.abs(Math.sin(updates / 100)) * 10 + 1, Math.sin(updates / 200 + angle) * 6];
             }
-            basicObjectList[basicObjectList.length - 1].rot = [0, Math.sin(updates / 70) * Math.PI * 2, 0];
+            basicObjectList[basicObjectList.length - 1].rot = [Math.sin(updates / 400) * Math.PI * 2, 0, 0];
             updates++;
 
             zoomCur += (zoom - zoomCur) / 20;

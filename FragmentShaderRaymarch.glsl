@@ -14,7 +14,7 @@ out vec4 myOutputColor;
 
 uniform float iCameraDist;
 // Passed time
-//uniform float iTime;
+uniform float iTime;
 // Eye
 uniform vec3 uEye;
 // Focus
@@ -35,7 +35,8 @@ uniform bool uUseSpecular;
 // 0. plane
 // 1. Cuboid
 // 2. Sphere
-// 3. Reflective Sphere
+// 3. Torus waves
+// 4. Torus
 struct BasicObject {
     int type;
     vec3 pos;
@@ -115,7 +116,7 @@ float torusWavesSDF(vec3 p, float ringRadius, float torusRadius) {
     vec2 d = vec2(length(p.xz) - torusRadius, p.y);
     float aRing = atan(d.x, d.y);
     
-    return length(d) - (ringRadius + sin(aTorus*30.)*cos(aRing*15.)*0.1);
+    return length(d) - (ringRadius + sin(aTorus*10.)*cos(aRing*5.)*0.1);
 }
 
 
@@ -141,14 +142,7 @@ vec3 translate(vec3 p, vec3 d) {
     return p + d;
 }
 
-vec3 twist(vec3 p) {
-    float k  = 0.2;
-    float c = cos(k*p.z);
-    float s = sin(k*p.z);
-    // 2d Rotation matrix
-    mat2 m = mat2(c, -s, s, c);
-    return vec3(m*p.xy, p.z);
-}
+
 vec3 wobble(vec3 p) {
     return vec3(p.x, p.y + 5.*cos(p.x/10.)*sin(p.z/10.), p.z);
 }
@@ -208,6 +202,12 @@ float getClosestObject(vec3 p) {
         if(uObjects[i].type == 2) {
             sceneSDF = sphereDist(p_obj_transform, 0.5);
         }
+        if(uObjects[i].type == 3) {
+            sceneSDF = torusWavesSDF(p_obj_transform, 0.3, 1.);
+        }
+        if(uObjects[i].type == 4) {
+            sceneSDF = torusSDF(p_obj_transform, 0.3, 1.);
+        }
         if(sceneSDF < minDist) {
             minDist = sceneSDF;
             closestObjectIndex = i;
@@ -215,7 +215,6 @@ float getClosestObject(vec3 p) {
                 closestObjectCollision = true;
             }
         }
-
     }
     return minDist;
 }
@@ -315,17 +314,6 @@ vec4 selectColor(float dist) {
         return vec4(0, 0, 0, 0);
     }
     vec3 color = calculatePhongLighting(colorHit, uEye + dist*worldDir);
-    // PHONG LIGHTING FROM ONE LIGHT
-//    vec3 p = uEye + dist * worldDir;
-//    // Ambient
-//    vec3 K_a = colorHit;
-//    // Diffuse
-//    vec3 K_d = vec3(0.7, 0.7, 0.7);
-//    // Speculat
-//    vec3 K_s = vec3(0.6, 0.6, 0.6);
-//    float shininess = 20.;
-//    
-//    vec3 color = phongLighting(K_a, K_d, K_s, shininess, p, uEye, colorHit);
     return vec4(color, 1.);
 }
 void main() {
@@ -334,7 +322,8 @@ void main() {
     viewToWorld = viewMatrix(uEye, uFocus, uUp);
     worldDir = (viewToWorld*vec4(viewDir, 0.0)).xyz;
     
-    lightPos = vec3(3, 4, 5);
+    lightPos = vec3(0., 6., 0.);
+    iTime;
     float depth = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
     // Which color has been hit
     vec3 colorHit = selectColor(depth).xyz;
