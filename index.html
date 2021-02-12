@@ -158,40 +158,6 @@
             }
         }
 
-        function createFramebuffer() {
-            // create to render to
-            const targetTextureWidth = 512;
-            const targetTextureHeight = 512;
-            targetTexture = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, targetTexture);
-
-            // define size and format of level 0
-            const level = 0;
-            const internalFormat = gl.RGBA;
-            const border = 0;
-            const format = gl.RGBA;
-            const type = gl.UNSIGNED_BYTE;
-            const data = null;
-            gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-                targetTextureWidth, targetTextureHeight, border,
-                format, type, data);
-
-            // set the filtering so we don't need mips
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-            // Create and bind the framebuffer
-            framebuffer = gl.createFramebuffer();
-            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-
-            // attach the texture as the first color attachment
-            const attachmentPoint = gl.COLOR_ATTACHMENT0;
-            gl.framebufferTexture2D(
-                gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
-
-
-        }
-
         function getFile(fname) {
             return new Promise(function(resolve, reject) {
                 var client = new XMLHttpRequest();
@@ -209,9 +175,6 @@
             })
         }
 
-        function passObjectData() {
-
-        }
         // Setup canvas
         function getCanvas() {
             canvas = document.getElementById("canvasId");
@@ -245,12 +208,7 @@
                 gl.enable(gl.DEPTH_TEST);
                 gl.clearColor(0.85, 0.95, 0.95, 1);
 
-                // Framebuffer to render to
-                createFramebuffer();
-                // Raymarcher to draw on framebuffer
                 raymarcher = new RayMarcher();
-                // canvasDrawer to draw framebuffer on canvas
-                canvasDrawer = new CanvasDrawer();
 
                 // Begin animation
                 drawFrame();
@@ -260,7 +218,6 @@
             });
 
         }
-
         class RayMarcher {
             constructor() {
                 // Create geometry texture if needed
@@ -268,9 +225,9 @@
                 this.program = getProgram(
                     VertexShader,
                     FragmentShaderRaymarch);
-                // 
+
+
                 let data = [-1, -1, -1, 1, 1, 1, 1, -1];
-                // 
                 let buf = gl.createBuffer();
                 gl.bindBuffer(gl.ARRAY_BUFFER, buf);
                 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
@@ -287,72 +244,37 @@
                 getVariables();
 
                 loadUniformAllObjects();
+
                 zoom = 20 + 7 * Math.cos(updates / 300);
-
-                gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-
-                gl.bindTexture(gl.TEXTURE_2D, geometryTexture);
 
                 gl.viewport(0, 0, 512, 512);
 
                 gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
 
+                // Camera position
                 lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
-
 
                 //                gl.uniform1i(u_geometry_tex, 0);
 
 
                 gl.enableVertexAttribArray(aXY);
                 gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
-                gl.uniform1f(iTime, updates / 20);
+                //                gl.uniform1f(iTime, updates / 20);
                 //                gl.uniform1f(iCameraDist, zoomCur);
                 gl.uniform1f(uFOV, 45.);
+                gl.uniform1i(uUseAmbient, true);
+                gl.uniform1i(uUseDiffuse, true);
+                gl.uniform1i(uUseSpecular, true);
                 gl.uniform2fv(uRes, [512, 512]);
 
                 //                gl.uniform1i(uObjectsN, basicObjectList.length);
                 gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-
-                // Unbind framebuffer and texture after each draw
-                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-                gl.bindTexture(gl.TEXTURE_2D, null);
-
             }
         }
-        // Draws from framebuffer to canvas
-        class CanvasDrawer {
-            constructor() {
-                this.program = getProgram(VertexShader, FragmentShaderDrawFramebuffer);
-
-                let data = [-1, -1, -1, 1, 1, 1, 1, -1];
-                let buf = gl.createBuffer();
-                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
-                this.buf = buf;
-            }
-            draw() {
-                glprog = this.program;
-                gl.useProgram(this.program);
-                getVariables();
-                gl.uniform1i(uTexUnit, 0);
-
-                // Draw 
-                gl.bindTexture(gl.TEXTURE_2D, targetTexture);
-
-                gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
-                gl.viewport(0, 0, 512, 512);
-                gl.enableVertexAttribArray(aXY);
-                gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
-
-                gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-            }
-        }
-
 
         function drawFrame() {
             gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
             raymarcher.draw();
-            canvasDrawer.draw();
 
             requestAnimationFrame(drawFrame);
         }
@@ -370,12 +292,13 @@
                 child1 = basicObjectList[1],
                 child2 = basicObjectList[2];
 
-            for (let i = 1; i < basicObjectList.length; i++) {
+            for (let i = 1; i < basicObjectList.length - 1; i++) {
                 let cur = basicObjectList[i];
                 cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
                 cur.scale = [2, 2, 2];
                 cur.pos = [i * 3, Math.abs(Math.sin(updates / 100)) * 10 + 1, 0];
             }
+            basicObjectList[basicObjectList.length - 1].rot = [0, Math.sin(updates / 70) * Math.PI * 2, 0];
             updates++;
 
             zoomCur += (zoom - zoomCur) / 20;
