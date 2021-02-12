@@ -310,10 +310,12 @@ vec4 selectColor(float dist) {
     float maxDistToLight = abs(length(lightPos - pHit));
     float distToLight = raymarchDepth(pHit, normalize(lightPos-pHit), MIN_DIST, maxDistToLight);
     // Shadows
-    if(distToLight < maxDistToLight - EPSILON) {
-        return vec4(0, 0, 0, 0);
-    }
+    
     vec3 color = calculatePhongLighting(colorHit, uEye + dist*worldDir);
+    if(distToLight < maxDistToLight - EPSILON) {
+        float k = -log(1.-distToLight/maxDistToLight);
+        return vec4(sin(k)*color + sin(1.-k)*vec3(0, 0, 0), 0.);
+    }
     return vec4(color, 1.);
 }
 void main() {
