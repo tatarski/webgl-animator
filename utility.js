@@ -194,3 +194,32 @@ class rayMarchMouse {
         return translate(rotateP(p, basicObjectList[i].rot), basicObjectList[i].pos);
     }
 }
+// Check if script is running from nodejs or browser
+if (typeof window === 'undefined') {
+    // Node.js
+    module.exports = {
+        lengthV: lengthV,
+        add: add,
+        sum: sum,
+        transpose: transpose,
+        sphereDist: sphereDist,
+        planeYDist: planeYDist,
+        roundDist: roundDist,
+        absV: absV,
+        maxV: maxV,
+        scaleV: scaleV,
+        cubeDist: cubeDist,
+        intersectDist: intersectDist,
+        unionDist: unionDist,
+        differenceDist: differenceDist,
+        translate: translate,
+        multiplyMat: multiplyMat,
+        rotateX: rotateX,
+        rotateY: rotateY,
+        rotateZ: rotateZ,
+        rotateP: rotateP,
+        toRad: toRad,
+        scale: scale,
+        normalize: normalize
+    };
+}

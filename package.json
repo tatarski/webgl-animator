@@ -1,11 +1,9 @@
 {
-  "name": "webgl-raymarcher",
-  "version": "1.0.0",
-  "description": "A simple webgl raymarcher and skeleton animator",
-  "main": "static-server.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC"
+    "scripts": {
+        "test": "mocha"
+    },
+    "devDependencies": {
+        "mocha": "^8.3.0",
+        "should": "^13.2.3"
+    }
 }
