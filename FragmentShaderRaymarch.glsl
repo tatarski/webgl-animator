@@ -80,38 +80,38 @@ mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
 //// Distance to basic 3d object
 
 // Dist to sphere 
-float sphereDist(vec3 p, float rad) {
+float sphere(vec3 p, float rad) {
     return length(p) - rad;
 }
 // Dist to plane parral XZ 
-float planeYDist(vec3 p) {
+float planeY(vec3 p) {
     return p.y;
 }
 // Draw the surface that is a distance of 'h' from the original surface
-float roundDist(float d, float h) {
+float roundd(float d, float h) {
     return d - h;
 }
 // Dist to cube
-float cubeDist(vec3 p, vec3 b){
+float cube(vec3 p, vec3 b){
     vec3 q = abs(p) - b;
             // Distance outside
     return length(max(q,0.0));
 }
 
 // Dist to cyllinder
-float cyllinderDist(vec3 p, float radius, float height) {
+float cyllinder(vec3 p, float radius, float height) {
     vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(radius, height);
     return length(max(d, 0.));
 }
 
 // Dist to torus
-float torusSDF(vec3 p, float ringRadius, float torusRadius) {
+float torus(vec3 p, float ringRadius, float torusRadius) {
     vec2 d = vec2(length(p.xz) - torusRadius, p.y);
     return length(d) - ringRadius;
 }
 
 // Dist to torus with waves
-float torusWavesSDF(vec3 p, float ringRadius, float torusRadius) {
+float torus2(vec3 p, float ringRadius, float torusRadius) {
     float aTorus = atan(p.x, p.z);
     vec2 d = vec2(length(p.xz) - torusRadius, p.y);
     float aRing = atan(d.x, d.y);
@@ -122,13 +122,13 @@ float torusWavesSDF(vec3 p, float ringRadius, float torusRadius) {
 
 //// Combination of 3d objects
 
-float intersectDist(float distA, float distB) {
+float intersect(float distA, float distB) {
     return max(distA, distB);
 }
-float unionDist(float distA, float distB) {
+float unionn(float distA, float distB) {
     return min(distA, distB);
 }
-float differenceDist(float distA, float distB) {
+float difference(float distA, float distB) {
     return max(distA, -distB);
 }
 // Smooth minimum
@@ -172,7 +172,7 @@ vec3 rotateP(vec3 p, vec3 localRot) {
 vec3 scale(vec3 p, vec3 s) {
     return vec3(p.x*s.x, p.y*s.y, p.z*s.z);
 }
-float distToSphereField(vec3 p, float r, float offset) {
+float sphereField(vec3 p, float r, float offset) {
     return length(mod(p, vec3(2.*r)) - r) - r;
 }
 
@@ -232,7 +232,7 @@ float distToSphereField(vec3 p, float r, float offset) {
 //    return dist;
 //}
 float sceneSDF(vec3  p) {
-    return -smin(-unionDist(p.y, cubeDist(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))),distToSphereField(p, 1., 0.5), 0.3);
+    return TOKEN_FORMULA;
     //return min(getClosestConstObject(p), getClosestObject(p));
 }
 

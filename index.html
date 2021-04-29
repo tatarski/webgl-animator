@@ -1,257 +1,278 @@
 ﻿<!DOCTYPE html>
 
 <head>
-	<meta charset="utf-8" />
-	<title>Raymarching!</title>
+  <meta charset="utf-8" />
+  <title>Raymarching!</title>
 
-	<script src="webgl-fmi.js"></script>
-	<script src="utility.js"></script>
-	<script>
-		let zoom = 20,
-	zoomCur = 10;
+  <script src="webgl-fmi.js"></script>
+  <script src="utility.js"></script>
+  <script>
+    let zoom = 20,
+  zoomCur = 10;
 let updates = 0;
+let input;
 // Canvas element
 let canvas;
 let framebuffer;
 let targetTexture;
 let geometryTexture,
-	eye = [3, 3, 3],
-	cameraRotXZ = 0,
-	cameraRotY = 0,
-	cameraRadius = 3;
+  eye = [3, 3, 3],
+  cameraRotXZ = 0,
+  cameraRotY = 0,
+  cameraRadius = 3;
 let raymarcher;
+let FRAGMENT_SHADER_CURRENT;
 
-
+let drawStopped = false;
+let updateInterval; 
+function stopUpdate() {
+  clearInterval(updateInterval);
+}
 class BasicObject {
-	constructor(type = 0, pos = [0, 0, 0], scale = [1, 1, 1], localRot = [0, 0, 0], color = [1, 0, 0], offset = [0, 0, 0]) {
-		this.type = type;
-		this.pos = pos;
-		this.scale = scale;
-		// Local rot is yaw-pitch-roll
-		// In radians
-		this.rot = localRot;
-		// R,G,B
-		this.color = color;
-		// Offset used in skeletal structure
-		this.offset = offset;
-	}
-	getStateFromModelMatrix(modelMatrix) {
-		this.pos = [];
-		this.scale = [];
-		this.rot = [0, 0, 0];
-	}
+  constructor(type = 0, pos = [0, 0, 0], scale = [1, 1, 1], localRot = [0, 0, 0], color = [1, 0, 0], offset = [0, 0, 0]) {
+    this.type = type;
+    this.pos = pos;
+    this.scale = scale;
+    // Local rot is yaw-pitch-roll
+    // In radians
+    this.rot = localRot;
+    // R,G,B
+    this.color = color;
+    // Offset used in skeletal structure
+    this.offset = offset;
+  }
+  getStateFromModelMatrix(modelMatrix) {
+    this.pos = [];
+    this.scale = [];
+    this.rot = [0, 0, 0];
+  }
 }
 // Store the text of the glgs programs
 let FragmentShaderDrawFramebuffer,
-	FragmentShaderRaymarch,
-	VertexShader;
+  FragmentShaderRaymarch,
+  VertexShader,
+  RayMarchFormula = "p.y";
 
 var basicObjectList = [
-	new BasicObject(),
-	new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 1], [0, 0, 0]),
-	new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
-	new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 0], [0, 0, 0]),
-	new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 1], [0, 0, 0]),
-	new BasicObject(3, [0, 2, 0], [5, 1, 3], [0, 0, 0], [1, 1, 0], [0, 0, 0]),
+  new BasicObject(),
+  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 1], [0, 0, 0]),
+  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
+  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 0], [0, 0, 0]),
+  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 1], [0, 0, 0]),
+  new BasicObject(3, [0, 2, 0], [5, 1, 3], [0, 0, 0], [1, 1, 0], [0, 0, 0]),
 ];
 let n = 5;
 
 function minus(v) {
-	return [-v[0], -v[1], -v[2]];
+  return [-v[0], -v[1], -v[2]];
 }
 
 function invert(v) {
-	return [1 / v[0], 1 / v[1], 1 / v[2]];
+  return [1 / v[0], 1 / v[1], 1 / v[2]];
 }
 
 function loadUniformObject(basicObjectListI, targetI) {
-	let o = basicObjectList[basicObjectListI];
-	gl.uniform1i(window["uObjects[" + targetI + "].type"], o.type);
-	gl.uniform3fv(window["uObjects[" + targetI + "].pos"], minus(o.pos));
-	gl.uniform3fv(window["uObjects[" + targetI + "].scale"], invert(o.scale));
-	gl.uniform3fv(window["uObjects[" + targetI + "].rot"], minus(o.rot));
-	gl.uniform3fv(window["uObjects[" + targetI + "].color"], o.color);
-	gl.uniform3fv(window["uObjects[" + targetI + "].offset"], o.offset);
+  let o = basicObjectList[basicObjectListI];
+  gl.uniform1i(window["uObjects[" + targetI + "].type"], o.type);
+  gl.uniform3fv(window["uObjects[" + targetI + "].pos"], minus(o.pos));
+  gl.uniform3fv(window["uObjects[" + targetI + "].scale"], invert(o.scale));
+  gl.uniform3fv(window["uObjects[" + targetI + "].rot"], minus(o.rot));
+  gl.uniform3fv(window["uObjects[" + targetI + "].color"], o.color);
+  gl.uniform3fv(window["uObjects[" + targetI + "].offset"], o.offset);
 }
 
 function loadUniformAllObjects() {
-	for (let i = 0; i < basicObjectList.length; i++) {
-		loadUniformObject(i, i);
-	}
+  for (let i = 0; i < basicObjectList.length; i++) {
+    loadUniformObject(i, i);
+  }
 }
 
 function getFile(fname) {
-	return new Promise(function(resolve, reject) {
-		var client = new XMLHttpRequest();
-		client.open('GET', fname);
-		client.onreadystatechange = function() {
-			if (client.readyState == 4) {
-				if (client.status == 200) {
-					resolve(client.responseText);
-				} else {
-					reject("Unable to load file " + fname);
-				}
-			}
-		}
-		client.send();
-	})
+  return new Promise(function(resolve, reject) {
+    var client = new XMLHttpRequest();
+    client.open('GET', fname);
+    client.onreadystatechange = function() {
+      if (client.readyState == 4) {
+        if (client.status == 200) {
+          resolve(client.responseText);
+        } else {
+          reject("Unable to load file " + fname);
+        }
+      }
+    }
+    client.send();
+  })
 }
 
 // Setup canvas
 function getCanvas() {
-	canvas = document.getElementById("canvasId");
+  canvas = document.getElementById("canvasId");
   canvas.width = window.innerWidth/1.1;
   canvas.height= window.innerHeight/1.1;
-	canvas.addEventListener('webglcontextlost', function(event) {
-		event.preventDefault();
-	}, false);
-	canvas.addEventListener('webglcontextrestored', function() {
-		init();
-	}, false);
+  canvas.addEventListener('webglcontextlost', function(event) {
+    event.preventDefault();
+  }, false);
+  canvas.addEventListener('webglcontextrestored', function() {
+    init();
+  }, false);
 }
 
 function onload() {
-	getFile("VertexShader.glsl")
-		.then(function(contents) {
-			VertexShader = contents;
-			return getFile("FragmentShaderDrawFramebuffer.glsl");
-		}).then(function(contents) {
-			FragmentShaderDrawFramebuffer = contents;
-			return getFile("FragmentShaderRaymarch.glsl");
-		}).then(function(contents) {
-			FragmentShaderRaymarch = contents.replace("OBJECTS_MAX_TOKEN", basicObjectList.length);
-			getCanvas();
+  input = document.getElementById("inputEl");
+  drawStopped = false;
+  getFile("VertexShader.glsl")
+    .then(function(contents) {
+      VertexShader = contents;
+      return getFile("FragmentShaderDrawFramebuffer.glsl");
+    }).then(function(contents) {
+      FragmentShaderDrawFramebuffer = contents;
+      return getFile("FragmentShaderRaymarch.glsl");
+    }).then(function(contents) {
+      FragmentShaderRaymarch = contents.replace("OBJECTS_MAX_TOKEN", basicObjectList.length);
+      FragmentShaderRaymarch = contents.replace("TOKEN_FORMULA", RayMarchFormula || "p.y");
 
-			// Get context
-			gl = getContext("canvasId");
-			// For Float32 RGB Geometry texture
-			gl.getExtension('OES_texture_float');
-			gl.getExtension('OES_texture_float_linear');
+      getCanvas();
 
-			gl.enable(gl.DEPTH_TEST);
-			gl.clearColor(0.85, 0.95, 0.95, 1);
+      // Get context
+      gl = getContext("canvasId");
+      // For Float32 RGB Geometry texture
+      gl.getExtension('OES_texture_float');
+      gl.getExtension('OES_texture_float_linear');
 
-			raymarcher = new RayMarcher();
-		}).then(function() {
-			// Begin animation
-			drawFrame();
-			setInterval(update, 10);
-		}).catch(function(errText) {
-			console.log(errText);
-		});
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(0.85, 0.95, 0.95, 1);
+
+      raymarcher = new RayMarcher();
+    }).then(function() {
+      // Begin animation
+      drawFrame();
+      updateInterval = setInterval(update, 10);
+    }).catch(function(errText) {
+      console.log(errText);
+    });
 }
+
 class RayMarcher {
-	constructor() {
-		// Create geometry texture if needed
-		//                createGeometryTexture();
-		this.program = getProgram(
-			VertexShader,
-			FragmentShaderRaymarch);
+  constructor() {
+    // Create geometry texture if needed
+    //                createGeometryTexture();
+    this.program = getProgram(
+      VertexShader,
+      FragmentShaderRaymarch);
 
-		let data = [-1, -1, -1, 1, 1, 1, 1, -1];
-		let buf = gl.createBuffer();
-		gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+    let data = [-1, -1, -1, 1, 1, 1, 1, -1];
+    let buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
 
-		// запомняме n и буфера
-		this.buf = buf;
-		glprog = this.program;
-		gl.useProgram(this.program);
-		this.stopped = false;
-	}
-	// Redraws continuosly until stopped
-	draw() {
-		let B = this.buf, isS = this.stopped;
-		function redraw() {
-			// RayMarcher animation function
-			gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
+    // запомняме n и буфера
+    this.buf = buf;
+    glprog = this.program;
+    gl.useProgram(this.program);
+    this.stopped = false;
+  }
+  // Redraws continuosly until stopped
+  draw() {
+    let B = this.buf;
+    function redraw() {
+      // RayMarcher animation function
+      gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
 
-			getVariables();
-			//loadUniformAllObjects();
+      getVariables();
+      //loadUniformAllObjects();
 
-			zoom = 20 + 7 * Math.cos(updates / 300);
+      zoom = 20 + 7 * Math.cos(updates / 300);
 
-			gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.viewport(0, 0, canvas.width, canvas.height);
 
-			gl.bindBuffer(gl.ARRAY_BUFFER, B);
+      gl.bindBuffer(gl.ARRAY_BUFFER, B);
 
-			// Camera position
-			lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
+      // Camera position
+      lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
 
-			//                gl.uniform1i(u_geometry_tex, 0);
+      //                gl.uniform1i(u_geometry_tex, 0);
 
 
-			gl.enableVertexAttribArray(aXY);
-			gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
-			gl.uniform1f(iTime, updates / 20);
-			//                gl.uniform1f(iCameraDist, zoomCur);
-			gl.uniform1f(uFOV, 45.);
-			gl.uniform1i(uUseAmbient, true);
-			gl.uniform1i(uUseDiffuse, true);
-			gl.uniform1i(uUseSpecular, true);
-			gl.uniform2fv(uRes, [canvas.width, canvas.height]);
+      gl.enableVertexAttribArray(aXY);
+      gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
+      gl.uniform1f(iTime, updates / 20);
+      //                gl.uniform1f(iCameraDist, zoomCur);
+      gl.uniform1f(uFOV, 45.);
+      gl.uniform1i(uUseAmbient, true);
+      gl.uniform1i(uUseDiffuse, true);
+      gl.uniform1i(uUseSpecular, true);
+      gl.uniform2fv(uRes, [canvas.width, canvas.height]);
 
-			//                gl.uniform1i(uObjectsN, basicObjectList.length);
-			gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+      //                gl.uniform1i(uObjectsN, basicObjectList.length);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 
-			if(!isS) {
-				requestAnimationFrame(redraw);
-			}
-		}
-		redraw();
-	}
-	start() {
-		this.draw();
-		this.stopped = false;
-	}
-	stop() {
-		this.stoped = true;
-	}
+      if(!drawStopped) {
+        requestAnimationFrame(redraw);
+      }
+    }
+    redraw();
+  }
+  start() {
+    this.draw();
+    this.stopped = false;
+  }
+  stop() {
+    this.stoped = true;
+  }
 }
 
 function drawFrame() {
-	gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
-	raymarcher.draw();
+  gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
+  raymarcher.draw();
 }
 
 function cloneArr(arr) {
-	let res = [];
-	for (let i = 0; i < arr.length; i++) {
-		res.push(arr[i]);
-		}
-		return res;
-		}
+  let res = [];
+  for (let i = 0; i < arr.length; i++) {
+          res.push(arr[i]);
+          }
+          return res;
+          }
 
-		function update() {
-		//            let base = basicObjectList[0],
-		//                child1 = basicObjectList[1],
-		//                child2 = basicObjectList[2];
+          function update() {
+          //            let base = basicObjectList[0],
+          //                child1 = basicObjectList[1],
+          //                child2 = basicObjectList[2];
 
-		//            for (let i = 1; i < 5; i++) {
-		//                let cur = basicObjectList[i];
-		//                cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
-		//                cur.scale = [2, 2, 2];
-		//                let angle = i * (Math.PI * 2) / 5;
-		//                cur.pos = [Math.cos(updates / 200 + angle) * 6, Math.abs(Math.sin(updates / 100)) * 10 + 1, Math.sin(updates / 200 + angle) * 6];
-		//            }
-		//            basicObjectList[basicObjectList.length - 1].rot = [Math.sin(updates / 400) * Math.PI * 2, 0, 0];
-		updates++;
+          //            for (let i = 1; i < 5; i++) {
+          //                let cur = basicObjectList[i];
+          //                cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
+          //                cur.scale = [2, 2, 2];
+          //                let angle = i * (Math.PI * 2) / 5;
+          //                cur.pos = [Math.cos(updates / 200 + angle) * 6, Math.abs(Math.sin(updates / 100)) * 10 + 1, Math.sin(updates / 200 + angle) * 6];
+          //            }
+          //            basicObjectList[basicObjectList.length - 1].rot = [Math.sin(updates / 400) * Math.PI * 2, 0, 0];
+          updates++;
 
-		zoomCur += (zoom - zoomCur) / 20;
-		}
+          zoomCur += (zoom - zoomCur) / 20;
+          }
+          function onFormulaInput() {
+              formula = input.value;
+              console.log(formula);
+              drawStopped = true;
+              stopUpdate();
+              RayMarchFormula = formula || "p.y";
+              setTimeout(onload, 250);
+          }
 
-	</script>
+  </script>
 </head>
 
-<body onload="onload()">
+<body onload="onload();">
   <div style="position:absolute;top:0px;left:5%;width:85%; padding:0px;">
-    <input type="text" placeholder="Enter GLSL signed distance function" style="font: 30px Courier New; font-weight: bold; width:80%; height:40px; margin:5px;">
+    <textarea id="inputEl"type="text" placeholder="Enter GLSL signed distance function" style="font: 15px Courier New; font-weight: bold; width:80%; height:40px; margin:5px;" >-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1., 0.5), 0.3)</textarea>
+    <button onclick="onFormulaInput()" style="font:20px Courier New; color:black;width:5%;vertical-align:center;display:inline;position:absolute;top:25%;">GO</button>
   </div>
-	<noscript>
-		Искаме JavaScript, но няма!
-	</noscript>
+  <noscript>
+    Искаме JavaScript, но няма!
+  </noscript>
 
-	<canvas id="canvasId" style="border: solid;">
-		Искаме canvas, но няма!
-	</canvas>
+  <canvas id="canvasId" style="border: solid;">
+    Искаме canvas, но няма!
+  </canvas>
 </body>
