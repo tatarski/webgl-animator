@@ -1,6 +1,7 @@
 {
     "scripts": {
-        "test": "mocha"
+        "test": "mocha",
+        "start": "node statis-server.js"
     },
     "devDependencies": {
         "mocha": "^8.3.0",
