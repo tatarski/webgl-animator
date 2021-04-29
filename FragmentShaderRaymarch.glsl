@@ -6,7 +6,7 @@ precision mediump float;
 // Constants
 const int MAX_MARCHING_STEPS = 150;
 const float MIN_DIST = 0.0;
-const float MAX_DIST = 30.0;
+const float MAX_DIST = 100.0;
 const float EPSILON = 0.01;
 const float PI = 3.14159265359;
 in vec2 vXY;
@@ -172,7 +172,7 @@ vec3 rotateP(vec3 p, vec3 localRot) {
 vec3 scale(vec3 p, vec3 s) {
     return vec3(p.x*s.x, p.y*s.y, p.z*s.z);
 }
-float sphereField(vec3 p, float r, float offset) {
+float sphereField(vec3 p, float r) {
     return length(mod(p, vec3(2.*r)) - r) - r;
 }
 
@@ -233,7 +233,6 @@ float sphereField(vec3 p, float r, float offset) {
 //}
 float sceneSDF(vec3  p) {
     return TOKEN_FORMULA;
-    //return min(getClosestConstObject(p), getClosestObject(p));
 }
 
 // Get ray direction by given pixel x,y
@@ -333,6 +332,10 @@ void main() {
     iTime;
     float depth = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
     // Which color has been hit
+    if(depth > MAX_DIST) {
+      myOutputColor = vec4(0.,0.,0.,1.);
+        return;
+    }
     vec3 colorHit = vec3(0.8,0.4,.4);
     vec3 pHit = uEye + worldDir*(depth-EPSILON*20.);
     float maxDistToLight = abs(length(lightPos - pHit));

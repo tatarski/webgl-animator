@@ -260,13 +260,31 @@ function cloneArr(arr) {
               setTimeout(onload, 250);
           }
 
+          function openhelp() {
+              document.getElementById("help").style.display = "inline-block";
+              document.getElementById("openhelpbtn").style.display = "none";
+          }
+          function closehelp() {
+          document.getElementById("help").style.display = "none";
+          document.getElementById("openhelpbtn").style.display= "inline-block";          }
+
   </script>
 </head>
 
 <body onload="onload();">
   <div style="position:absolute;top:0px;left:5%;width:85%; padding:0px;">
-    <textarea id="inputEl"type="text" placeholder="Enter GLSL signed distance function" style="font: 15px Courier New; font-weight: bold; width:80%; height:40px; margin:5px;" >-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1., 0.5), 0.3)</textarea>
-    <button onclick="onFormulaInput()" style="font:20px Courier New; color:black;width:5%;vertical-align:center;display:inline;position:absolute;top:25%;">GO</button>
+    <textarea id="inputEl"type="text" placeholder="Enter GLSL signed distance function" style="font: 15px Courier New; font-weight: bold; width:80%; height:50px; margin:5px;" >-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1.), 0.3)</textarea>
+    <button onclick="onFormulaInput()" style="height:80px;width:50px;font:20px Courier New; color:black;display:inline-block;">GO</button>
+
+    <p onclick="closehelp()" id="help" style="background-color:white; font:18px Courier New;display:none;" >Parameters: p(vec3) <br>
+    Input expression returns distance between p(vec3) and 3d surface.<br>
+    <b>All standart GLSL function work:</b> e.g. mod, abs, length... <br>
+  <b>GLSL Cheat Sheet:</b> <a href="http://mew.cx/glsl_quickref.pdf">http://mew.cx/glsl_quickref.pdf</a><br>
+  <b>Variables:</b> float iTime, float PI<br>
+  <b>Built in functions:</b> sphere(vec3,float), planeY(vec3), roundd(float, float), cube(vec3, vec3), cyllinder(vec3, float, float), torus(vec3, float, float), torus2(vec3, float, float), intersect(float, float), unionn(float, float), difference(float, float), smin(float, float, float), translate(vec3, vec3), wobble(vec3), rotateX(vec3, float), rotateY(vec3, float), rotateZ(vec3, float), rotateP(vec3, vec3), scale(vec3, vec3), sphereField(vec3, float).<br>
+  <b>Click to close.</b> <br>
+    </p>
+    <button id="openhelpbtn" onclick="openhelp()" style="display:inline-block;height:80px;width:50px;">???</button>
   </div>
   <noscript>
     Искаме JavaScript, но няма!
