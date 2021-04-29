@@ -6,7 +6,7 @@ precision mediump float;
 // Constants
 const int MAX_MARCHING_STEPS = 150;
 const float MIN_DIST = 0.0;
-const float MAX_DIST = 50.0;
+const float MAX_DIST = 30.0;
 const float EPSILON = 0.01;
 const float PI = 3.14159265359;
 in vec2 vXY;
@@ -172,6 +172,9 @@ vec3 rotateP(vec3 p, vec3 localRot) {
 vec3 scale(vec3 p, vec3 s) {
     return vec3(p.x*s.x, p.y*s.y, p.z*s.z);
 }
+float distToSphereField(vec3 p, float r, float offset) {
+    return length(mod(p, vec3(2.*r)) - r) - r;
+}
 
 
 //// uObjects utility functions
@@ -229,7 +232,7 @@ vec3 scale(vec3 p, vec3 s) {
 //    return dist;
 //}
 float sceneSDF(vec3  p) {
-    return p.y;
+    return -smin(-unionDist(p.y, cubeDist(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))),distToSphereField(p, 1., 0.5), 0.3);
     //return min(getClosestConstObject(p), getClosestObject(p));
 }
 
@@ -251,7 +254,7 @@ vec3 estimateNormal(vec3 p) {
 
 // Calculates phong lighting by given color and point in world view (transformed with viewToWorld)
 vec3 calculatePhongLighting(vec3 colorObj, vec3 p) {
-    vec3 ambientColor = vec3(0.3, 0.2, 0.2),
+    vec3 ambientColor = vec3(0.5, 0.5, 0.5),
         diffuseColor = vec3(0.4, 0.4, 0.4),
         specularColor = vec3(0.6, 0.6, 0.6),
         lightPos_ = lightPos,
@@ -321,18 +324,28 @@ float raymarchDepth(vec3 p, vec3 dir, float begin_depth, float max_depth) {
 //    return vec4(color, 1.);
 //}
 void main() {
-    vec2 fragCoord = (vXY + 0.5) *512.;
+    vec2 fragCoord = (vXY + 0.5) * uRes;
     viewDir = rayDirection(uFOV, uRes, fragCoord);
     viewToWorld = viewMatrix(uEye, uFocus, uUp);
     worldDir = (viewToWorld*vec4(viewDir, 0.0)).xyz;
     
-    lightPos = vec3(0., 6., 0.);
+    lightPos = vec3(0., 6., 10.);
     iTime;
     float depth = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
     // Which color has been hit
     vec3 colorHit = vec3(0.8,0.4,.4);
-    
-    myOutputColor = vec4(calculatePhongLighting(colorHit, uEye + depth*worldDir), 1.);
+    vec3 pHit = uEye + worldDir*(depth-EPSILON*20.);
+    float maxDistToLight = abs(length(lightPos - pHit));
+    float distToLight = raymarchDepth(pHit, normalize(lightPos-pHit), MIN_DIST, maxDistToLight);
+//    // Shadows
+//    
+    vec3 color = calculatePhongLighting(colorHit, uEye + depth*worldDir);
+    if(distToLight < maxDistToLight - EPSILON) {
+        float k = -log(1.-distToLight/maxDistToLight);
+        myOutputColor = vec4(0.3*color, 1.);
+    } else {
+        myOutputColor = vec4(calculatePhongLighting(colorHit, uEye + depth*worldDir), 1.);
+    }
     return;
 
 }

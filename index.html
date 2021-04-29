@@ -100,6 +100,8 @@ function getFile(fname) {
 // Setup canvas
 function getCanvas() {
 	canvas = document.getElementById("canvasId");
+  canvas.width = window.innerWidth/1.1;
+  canvas.height= window.innerHeight/1.1;
 	canvas.addEventListener('webglcontextlost', function(event) {
 		event.preventDefault();
 	}, false);
@@ -169,7 +171,7 @@ class RayMarcher {
 
 			zoom = 20 + 7 * Math.cos(updates / 300);
 
-			gl.viewport(0, 0, 512, 512);
+			gl.viewport(0, 0, canvas.width, canvas.height);
 
 			gl.bindBuffer(gl.ARRAY_BUFFER, B);
 
@@ -187,7 +189,7 @@ class RayMarcher {
 			gl.uniform1i(uUseAmbient, true);
 			gl.uniform1i(uUseDiffuse, true);
 			gl.uniform1i(uUseSpecular, true);
-			gl.uniform2fv(uRes, [512, 512]);
+			gl.uniform2fv(uRes, [canvas.width, canvas.height]);
 
 			//                gl.uniform1i(uObjectsN, basicObjectList.length);
 			gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
@@ -242,13 +244,14 @@ function cloneArr(arr) {
 </head>
 
 <body onload="onload()">
-	<h2>Ray Marching</h2>
-
+  <div style="position:absolute;top:0px;left:5%;width:85%; padding:0px;">
+    <input type="text" placeholder="Enter GLSL signed distance function" style="font: 30px Courier New; font-weight: bold; width:80%; height:40px; margin:5px;">
+  </div>
 	<noscript>
 		Искаме JavaScript, но няма!
 	</noscript>
 
-	<canvas id="canvasId" width="512" height="512" style="border: solid;">
+	<canvas id="canvasId" style="border: solid;">
 		Искаме canvas, но няма!
 	</canvas>
 </body>
