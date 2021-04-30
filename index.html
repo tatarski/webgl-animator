@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Raymarching!</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
   <script src="webgl-fmi.js"></script>
   <script src="utility.js"></script>
@@ -20,9 +21,9 @@ let geometryTexture,
   cameraRotXZ = 0,
   cameraRotY = 0,
   cameraRadius = 3;
+let formulaList = [];
 let raymarcher;
 let FRAGMENT_SHADER_CURRENT;
-
 let drawStopped = false;
 let updateInterval; 
 function stopUpdate() {
@@ -147,6 +148,17 @@ function onload() {
       // Begin animation
       drawFrame();
       updateInterval = setInterval(update, 10);
+    }).then(function() {
+      return new Promise((res, rej)=>{
+        $.get(
+          '/list',
+          (d)=>{formulaList=d},
+          res,
+          'json'
+        ).fail(rej);
+      });
+    }).then((formulas) => {
+      formulaList = formulas;
     }).catch(function(errText) {
       console.log(errText);
     });
@@ -257,16 +269,44 @@ function cloneArr(arr) {
               drawStopped = true;
               stopUpdate();
               RayMarchFormula = formula || "p.y";
+              console.log(formula);
+            $.post(`/formula`, {formula:formula});
+
               setTimeout(onload, 250);
           }
-
           function openhelp() {
               document.getElementById("help").style.display = "inline-block";
               document.getElementById("openhelpbtn").style.display = "none";
           }
           function closehelp() {
           document.getElementById("help").style.display = "none";
-          document.getElementById("openhelpbtn").style.display= "inline-block";          }
+          document.getElementById("openhelpbtn").style.display= "inline-block";          
+          }
+          function closeFormulaList(e) {
+              
+          document.getElementById("formula-holder").innerHTML = '';
+          }
+          function loadFormula(e) {
+          document.getElementById('inputEl').value = e.target.innerHTML;
+          onFormulaInput();
+
+          closeFormulaList();
+          }
+          function loadManyFormulas(list) {
+          document.getElementById("formula-holder").innerHTML = '';
+          for(let f of list) {
+            let element = document.createElement('li');
+            element.innerHTML = f;
+            element.onclick = loadFormula;
+          document.getElementById('formula-holder').appendChild(element);
+          }
+          let closeEl = document.createElement('li');
+          closeEl.innerHTML = 'CLOSE';
+          closeEl.onclick = function () {
+          document.getElementById("formula-holder").innerHTML = '';
+          }
+          document.getElementById('formula-holder').appendChild(closeEl);
+          }
 
   </script>
 </head>
@@ -285,6 +325,9 @@ function cloneArr(arr) {
   <b>Click to close.</b> <br>
     </p>
     <button id="openhelpbtn" onclick="openhelp()" style="display:inline-block;height:80px;width:50px;">???</button>
+    <button id="openformulasbtn" onclick="loadManyFormulas(formulaList)" style="display:inline-block;height:80px;width:50px;">LIST</button>
+    <ul id="formula-holder" style="background-color:white;font:20px Courier New;">
+    </ul>
   </div>
   <noscript>
     Искаме JavaScript, но няма!

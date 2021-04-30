@@ -1,0 +1,1 @@
+["p.y","length(p) - 1.","p.y + sin(p.x)*cos(p.z)/5.","p.y + sin(p.x)*cos(p.z)/2.","-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1.), 0.3)"]

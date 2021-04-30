@@ -1,74 +1,41 @@
-var http = require('http');
-var fs = require('fs');
-var path = require('path');
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 8125;
+const fs = require('fs');
+const bodyParser = require('body-parser');
+let formulaList = require('./formulas.json');
 
-http.createServer(function (request, response) {
-    console.log('request starting...');
-    var filePath = './' + request.url;
-    if (filePath == './')
-        filePath = './index.html';
+app.use(express.static('public'));
+app.use(bodyParser.urlencoded({ extended: true }));
 
-    var extname = path.extname(filePath);
-    var contentType = 'text/html';
-    switch (extname) {
-        case '.js':
-            contentType = 'text/javascript';
-            break;
-        case '.css':
-            contentType = 'text/css';
-            break;
-        case '.json':
-            contentType = 'application/json';
-            break;
-        case '.png':
-            contentType = 'image/png';
-            break;
-        case '.jpg':
-            contentType = 'image/jpg';
-            break;
-        case '.wav':
-            contentType = 'audio/wav';
-            break;
-        case '.html':
-            contentType = 'text/html';
-            break;
-        case '.glsl':
-            // According to KHRONOS G. this is the way :D     
-            contentType = 'text/plain';
-            break;
-        case '.ico':
-            // According to KHRONOS G. this is the way :D     
-            contentType = 'x-icon';
-            break;
-        default:
-            filePath += '/index.html';
-            break;
-    }
+app.get('/', (req, res) => {
+  res.status(200);
+  res.sendFile(`${__dirname}/index.html`);
+});
 
-    filePath = filePath.replace(/%20/g, " ");
-    console.log("	>>>" + filePath);
 
-    fs.readFile(filePath, function (error, content) {
-        if (error) {
-            if (error.code == 'ENOENT') {
-                fs.readFile('./404.html', function (error, content) {
-                    response.writeHead(404, {
-                        'Content-Type': contentType
-                    });
-                    response.end(content, 'utf-8');
-                });
-            } else {
-                response.writeHead(500);
-                response.end('Sorry, check with the site admin for error: ' + error.code + ' ..\n');
-                response.end();
-            }
-        } else {
-            console.log("    >>> Sending file with context type: " + contentType);
-            response.writeHead(200, {
-                'Content-Type': contentType
-            });
-            response.end(content, 'utf-8');
-        }
+app.get('/list', (req, res) => {
+  res.status(200);
+  res.send(formulaList);
+});
+app.post('/formula', (req, res) => {
+  let formula = req.body.formula;
+  if(formulaList.indexOf(formula) == -1) {
+    console.log(formula);
+    formulaList.push(formula);
+    console.log(formulaList);
+    fs.writeFile('formulas.json', JSON.stringify(formulaList), 'utf8', (err)=>{
+      if(err) {
+        console.log(err);
+      }else{
+        console.log("New formula added to DB");
+      }
     });
+  }
+  res.status(200);
+  res.end();
+});
 
-}).listen(process.env.PORT || 8125);
+app.listen(port, () => {
+  console.log(`Listening at PORT:${port}`);
+});
