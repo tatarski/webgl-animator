@@ -121,7 +121,7 @@ function getCanvas() {
 function onload() {
   input = document.getElementById("inputEl");
   drawStopped = false;
-  getFile("VertexShader.glsl")
+  return getFile("VertexShader.glsl")
     .then(function(contents) {
       VertexShader = contents;
       return getFile("FragmentShaderDrawFramebuffer.glsl");
@@ -131,19 +131,24 @@ function onload() {
     }).then(function(contents) {
       FragmentShaderRaymarch = contents.replace("OBJECTS_MAX_TOKEN", basicObjectList.length);
       FragmentShaderRaymarch = contents.replace("TOKEN_FORMULA", RayMarchFormula || "p.y");
-
       getCanvas();
 
+
+      return getContext("canvasId");
+    }).then((glContext_)=>{
+      console.log(glContext_);
       // Get context
-      gl = getContext("canvasId");
+      gl = glContext_;
+
       // For Float32 RGB Geometry texture
-      gl.getExtension('OES_texture_float');
-      gl.getExtension('OES_texture_float_linear');
+      //gl.getExtension('OES_texture_float');
+      //gl.getExtension('OES_texture_float_linear');
 
       gl.enable(gl.DEPTH_TEST);
       gl.clearColor(0.85, 0.95, 0.95, 1);
 
       raymarcher = new RayMarcher();
+      return new Promise((res, rej)=>raymarcher.then(res));
     }).then(function() {
       // Begin animation
       drawFrame();
@@ -159,8 +164,8 @@ function onload() {
       });
     }).then((formulas) => {
       formulaList = formulas;
-    }).catch(function(errText) {
-      console.log(errText);
+    }).catch((err)=>{
+      console.log(err);
     });
 }
 
@@ -168,25 +173,28 @@ class RayMarcher {
   constructor() {
     // Create geometry texture if needed
     //                createGeometryTexture();
-    this.program = getProgram(
-      VertexShader,
-      FragmentShaderRaymarch);
+    this.promiseObject = getProgram(VertexShader, FragmentShaderRaymarch)
+      .then((program_)=>{
+        this.program = program_;
+        this.data = [-1, -1, -1, 1, 1, 1, 1, -1];
+        this.buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.data), gl.STATIC_DRAW);
 
-    let data = [-1, -1, -1, 1, 1, 1, 1, -1];
-    let buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
-
-    // запомняме n и буфера
-    this.buf = buf;
-    glprog = this.program;
-    gl.useProgram(this.program);
-    this.stopped = false;
+        // glprog - global variable used in webgl-fmi.js
+        glprog = this.program;
+        gl.useProgram(this.program);
+        this.stopped = false;
+      }).catch((err)=>{console.log(err)});
   }
-  // Redraws continuosly until stopped
+
+  then(cb) {
+    return this.promiseObject.then(cb);
+  }
+  // Starts redraw function
   draw() {
     let B = this.buf;
-    function redraw() {
+    let redraw = ()=> {
       // RayMarcher animation function
       gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
 
@@ -197,7 +205,7 @@ class RayMarcher {
 
       gl.viewport(0, 0, canvas.width, canvas.height);
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, B);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
 
       // Camera position
       lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
@@ -229,7 +237,7 @@ class RayMarcher {
     this.stopped = false;
   }
   stop() {
-    this.stoped = true;
+    this.stopped = true;
   }
 }
 
@@ -263,18 +271,21 @@ function cloneArr(arr) {
 
           zoomCur += (zoom - zoomCur) / 20;
           }
-          function onFormulaInput() {
-              formula = input.value;
-              console.log(formula);
-              drawStopped = true;
-              stopUpdate();
-              RayMarchFormula = formula || "p.y";
-              console.log(formula);
-            $.post(`/formula`, {formula:formula});
+function onFormulaInput() {
+  formula = input.value;
+  console.log(formula);
+  drawStopped = true;
+  stopUpdate();
+  RayMarchFormula = formula || "p.y";
 
-              setTimeout(onload, 250);
-          }
-          function openhelp() {
+  new Promise((res, rej)=>{
+    setTimeout(()=>{onload().then(res)}, 250);
+  }).then(()=>{
+    $.post(`/formula`, {formula:formula});
+
+  });
+}
+            function openhelp() {
               document.getElementById("help").style.display = "inline-block";
               document.getElementById("openhelpbtn").style.display = "none";
           }

@@ -85,13 +85,11 @@ var glstack = []; // стек от матрици на модела
 var FLOATS = Float32Array.BYTES_PER_ELEMENT;
 let globalEror = null;
 
-// Returns webgl context on canvas with given id
+// връща WebGL контекст, свързан с HTML елемент с даден id
 function getContext(id) {
-  return Promise.resolve().then(() => {
+  return new Promise(() => {
     let canvas = document.getElementById(id);
-
     if (!canvas) {
-
       throw new Error("Invalid canvas id");
     }
 
@@ -104,26 +102,26 @@ function getContext(id) {
     if (!context) {
       throw new Error("No webgl context found");
     }
+
     return context;
   });
 }
 
 
-// Return compiled shader from given id/text/DOMElement
+// Return compiled shader
 function getShader(id, type) {
-  return Promise.resolve().then(()=>{
+  return new Promise(()=>{
     let elem = document.getElementById(id);
     let source = elem ? elem.text : id;
-    let shader = gl.createShader(type);
+    var shader = gl.createShader(type);
 
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
-
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(shader));
+      alert(gl.getShaderInfoLog(shader));
+      return null;
     }
 
-    console.log(source);
     return shader;
   });
 }
@@ -131,27 +129,25 @@ function getShader(id, type) {
 
 // връща готова програма
 function getProgram(idv, idf) {
-  return Promise.all([getShader(idv, gl.VERTEX_SHADER), getShader(idf, gl.FRAGMENT_SHADER)])
-  .then(vfShaders=>{
-    let vShader = vfShaders[0];
-    let fShader = vfShaders[1];
+    var vShader = getShader(idv, gl.VERTEX_SHADER);
+    var fShader = getShader(idf, gl.FRAGMENT_SHADER);
 
     if (!vShader || !fShader) {
-        throw new Error("Missing shader source");
+        return null;
     }
 
-    let shaderProgram = gl.createProgram();
+    var shaderProgram = gl.createProgram();
     gl.attachShader(shaderProgram, vShader);
     gl.attachShader(shaderProgram, fShader);
     gl.linkProgram(shaderProgram);
 
     if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        throw new Error(gl.getProgramInfoLog(shaderProgram));
+        alert(gl.getProgramInfoLog(shaderProgram));
+        return null;
     }
 
     gl.useProgram(shaderProgram);
     return shaderProgram;
-  });
 }
 
 
