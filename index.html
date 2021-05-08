@@ -82,6 +82,101 @@ function loadUniformObject(basicObjectListI, targetI) {
   gl.uniform3fv(window["uObjects[" + targetI + "].offset"], o.offset);
 }
 
+class FormulaNode {
+  constructor(formulaString) {
+    let curOpen = formulaString.indexOf('('),
+      lastOpen = null,
+      stillOpen = 1,
+      i = 0;
+      for(i = firstOpen + 1; i < formulaString.length; i++){
+        if(formulaString[i] == '(') {
+          stillOpen++;
+        }
+        if(formulaString[i] == ')') {
+          stillOpen--;
+        }
+      }
+      if(stillOpen == 0) {
+        lastOpen = i-1;
+      }
+      
+  }
+}
+class Objectt {
+  constructor() {}
+  toString() {
+    throw "No string for empty formula";
+  }
+}
+function toFloat(n) {
+if(Number.isInteger(n)){
+        return n+'.0';
+      } else {
+        return n;
+      }
+}
+function toVec3(arr) {
+  let str = arr
+    .map(toFloat).reduce((s, a)=>s+a+',',`vec3(`);
+  str = str.substring(0, str.length-1);
+  str+=')';
+  return str;
+}
+class Sphere extends Objectt {
+  constructor(center, r) {
+    super();
+    this.pos = center;
+    this.radius = r;
+  }
+  toString() {
+    return `length(p + ${toVec3(this.pos)}) - ${toFloat(this.radius)}`;
+  }
+}
+let sphere1 = new Sphere([0, 0, 0], 1);
+class Plane extends Objectt {
+  constructor() { super();}
+  toString() {
+    return 'p.y';
+  }
+}
+
+let plane1 = new Plane().toString();
+class Cube extends Objectt {
+  constructor(pos, size) {
+    this.pos = pos;
+    this.size = size;
+  }
+}
+class ObjectUnion {
+  constructor(list_) {
+    if(list_< 2) {
+      throw "Cant get union of < 2 objects";
+    }
+    this.list = list_;
+  }
+  toString() {
+    let str = '', n = this.list.length;
+    for(let i = 0; i< n-2; i++) {
+      str+=`min(${this.list[i].toString()}, `;
+    }
+    str += `min(${this.list[n-2].toString()}, ${this.list[n-1]}`;
+    str += ')'.repeat(n-1);
+    return str;
+  }
+}
+let spheres1 = [];
+for(let i = 0; i < 10; i++) {
+  spheres1.push(new Sphere([Math.random()*16-8,Math.random()*16-8,Math.random()*16-8],Math.random()*2+0.2));
+}
+spheres1.push(plane1);
+let u1 = new ObjectUnion([plane1, sphere1]);
+let u2 = new ObjectUnion(spheres1);
+
+class ObjectIntersect {
+}
+class ObjectDifference {
+
+}
 function loadUniformAllObjects() {
   for (let i = 0; i < basicObjectList.length; i++) {
     loadUniformObject(i, i);
@@ -136,7 +231,6 @@ function onload() {
 
       return getContext("canvasId");
     }).then((glContext_)=>{
-      console.log(glContext_);
       // Get context
       gl = glContext_;
 
@@ -148,7 +242,8 @@ function onload() {
       gl.clearColor(0.85, 0.95, 0.95, 1);
 
       raymarcher = new RayMarcher();
-      return new Promise((res, rej)=>raymarcher.then(res));
+
+      return raymarcher.promise();
     }).then(function() {
       // Begin animation
       drawFrame();
@@ -157,15 +252,13 @@ function onload() {
       return new Promise((res, rej)=>{
         $.get(
           '/list',
-          (d)=>{formulaList=d},
+          res,
           res,
           'json'
         ).fail(rej);
       });
     }).then((formulas) => {
       formulaList = formulas;
-    }).catch((err)=>{
-      console.log(err);
     });
 }
 
@@ -185,17 +278,6 @@ class RayMarcher {
         glprog = this.program;
         gl.useProgram(this.program);
         this.stopped = false;
-      }).catch((err)=>{console.log(err)});
-  }
-
-  then(cb) {
-    return this.promiseObject.then(cb);
-  }
-  // Starts redraw function
-  draw() {
-    let B = this.buf;
-    let redraw = ()=> {
-      // RayMarcher animation function
       gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
 
       getVariables();
@@ -215,13 +297,25 @@ class RayMarcher {
 
       gl.enableVertexAttribArray(aXY);
       gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
-      gl.uniform1f(iTime, updates / 20);
       //                gl.uniform1f(iCameraDist, zoomCur);
       gl.uniform1f(uFOV, 45.);
       gl.uniform1i(uUseAmbient, true);
       gl.uniform1i(uUseDiffuse, true);
       gl.uniform1i(uUseSpecular, true);
-      gl.uniform2fv(uRes, [canvas.width, canvas.height]);
+      gl.uniform2fv(uRes, [canvas.width, canvas.height]);  
+      });
+  }
+
+  promise(cb) {
+    return this.promiseObject;
+  }
+  // Starts redraw function
+  draw() {
+    let B = this.buf;
+    let redraw = ()=> {
+      // RayMarcher animation function
+      
+      gl.uniform1f(iTime, updates / 20);
 
       //                gl.uniform1i(uObjectsN, basicObjectList.length);
       gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
@@ -273,17 +367,19 @@ function cloneArr(arr) {
           }
 function onFormulaInput() {
   formula = input.value;
-  console.log(formula);
   drawStopped = true;
   stopUpdate();
   RayMarchFormula = formula || "p.y";
-
-  new Promise((res, rej)=>{
-    setTimeout(()=>{onload().then(res)}, 250);
-  }).then(()=>{
-    $.post(`/formula`, {formula:formula});
-
-  });
+  
+  new Promise((res, rej) => setTimeout(res, 500))
+    .then(()=>onload())
+  .then(()=>$.post(`/formula`, {formula:formula}))
+  .catch((err)=>{
+    // Stop draw and update functions
+      stopUpdate();
+      drawStupped = true;
+      console.log(err);
+    });
 }
             function openhelp() {
               document.getElementById("help").style.display = "inline-block";
@@ -297,12 +393,12 @@ function onFormulaInput() {
               
           document.getElementById("formula-holder").innerHTML = '';
           }
-          function loadFormula(e) {
-          document.getElementById('inputEl').value = e.target.innerHTML;
-          onFormulaInput();
+function loadFormula(e) {
+  document.getElementById('inputEl').value = e.target.innerHTML;
+  onFormulaInput();
 
-          closeFormulaList();
-          }
+  closeFormulaList();
+}
           function loadManyFormulas(list) {
           document.getElementById("formula-holder").innerHTML = '';
           for(let f of list) {

@@ -123,7 +123,6 @@ function getShader(id, type) {
       throw new Error(gl.getShaderInfoLog(shader));
     }
 
-    console.log(source);
     return shader;
   });
 }

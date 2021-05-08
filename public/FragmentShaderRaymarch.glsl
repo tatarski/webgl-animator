@@ -4,9 +4,9 @@ precision mediump float;
 
 
 // Constants
-const int MAX_MARCHING_STEPS = 150;
+const int MAX_MARCHING_STEPS = 50;
 const float MIN_DIST = 0.0;
-const float MAX_DIST = 100.0;
+const float MAX_DIST = 70.0;
 const float EPSILON = 0.01;
 const float PI = 3.14159265359;
 in vec2 vXY;
@@ -328,7 +328,7 @@ void main() {
     viewToWorld = viewMatrix(uEye, uFocus, uUp);
     worldDir = (viewToWorld*vec4(viewDir, 0.0)).xyz;
     
-    lightPos = vec3(0., 6., 10.);
+    lightPos = vec3(sin(iTime/20.)*10., 5., cos(iTime/20.)*10.);
     iTime;
     float depth = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
     // Which color has been hit
