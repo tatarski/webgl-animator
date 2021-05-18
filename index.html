@@ -3,439 +3,408 @@
 <head>
   <meta charset="utf-8" />
   <title>Raymarching!</title>
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
   <script src="webgl-fmi.js"></script>
   <script src="utility.js"></script>
   <script>
     let zoom = 20,
-  zoomCur = 10;
-let updates = 0;
-let input;
-// Canvas element
-let canvas;
-let framebuffer;
-let targetTexture;
-let geometryTexture,
-  eye = [3, 3, 3],
-  cameraRotXZ = 0,
-  cameraRotY = 0,
-  cameraRadius = 3;
-let formulaList = [];
-let raymarcher;
-let FRAGMENT_SHADER_CURRENT;
-let drawStopped = false;
-let updateInterval; 
-function stopUpdate() {
-  clearInterval(updateInterval);
-}
-class BasicObject {
-  constructor(type = 0, pos = [0, 0, 0], scale = [1, 1, 1], localRot = [0, 0, 0], color = [1, 0, 0], offset = [0, 0, 0]) {
-    this.type = type;
-    this.pos = pos;
-    this.scale = scale;
-    // Local rot is yaw-pitch-roll
-    // In radians
-    this.rot = localRot;
-    // R,G,B
-    this.color = color;
-    // Offset used in skeletal structure
-    this.offset = offset;
-  }
-  getStateFromModelMatrix(modelMatrix) {
-    this.pos = [];
-    this.scale = [];
-    this.rot = [0, 0, 0];
-  }
-}
-// Store the text of the glgs programs
-let FragmentShaderDrawFramebuffer,
-  FragmentShaderRaymarch,
-  VertexShader,
-  RayMarchFormula = "p.y";
+      zoomCur = 10;
+    let updates = 0;
+    let input;
+    // Canvas element
+    let canvas;
+    let framebuffer;
+    let targetTexture;
+    let geometryTexture,
+      eye = [3, 3, 3],
+      cameraRotXZ = 0,
+      cameraRotY = 0,
+      cameraRadius = 3;
+    let formulaList = [];
+    let raymarcher;
+    let FRAGMENT_SHADER_CURRENT;
+    let updateInterval;
+    function stopUpdate() {
+      console.log("asdf");
+      clearInterval(updateInterval);
+    }
+    // Store the text of the glgs programs
+    let FragmentShaderDrawFramebuffer,
+      FragmentShaderRaymarch,
+      VertexShader,
+      RayMarchFormula = "p.y";
 
-var basicObjectList = [
-  new BasicObject(),
-  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 1], [0, 0, 0]),
-  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0, 0, 0]),
-  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [1, 0, 0], [0, 0, 0]),
-  new BasicObject(1, [0, 2, 0], [1, 1, 1], [0, 0, 0], [0, 1, 1], [0, 0, 0]),
-  new BasicObject(3, [0, 2, 0], [5, 1, 3], [0, 0, 0], [1, 1, 0], [0, 0, 0]),
-];
-let n = 5;
+    let n = 5;
 
-function minus(v) {
-  return [-v[0], -v[1], -v[2]];
-}
+    function minus(v) {
+      return [-v[0], -v[1], -v[2]];
+    }
 
-function invert(v) {
-  return [1 / v[0], 1 / v[1], 1 / v[2]];
-}
-
-function loadUniformObject(basicObjectListI, targetI) {
-  let o = basicObjectList[basicObjectListI];
-  gl.uniform1i(window["uObjects[" + targetI + "].type"], o.type);
-  gl.uniform3fv(window["uObjects[" + targetI + "].pos"], minus(o.pos));
-  gl.uniform3fv(window["uObjects[" + targetI + "].scale"], invert(o.scale));
-  gl.uniform3fv(window["uObjects[" + targetI + "].rot"], minus(o.rot));
-  gl.uniform3fv(window["uObjects[" + targetI + "].color"], o.color);
-  gl.uniform3fv(window["uObjects[" + targetI + "].offset"], o.offset);
-}
-
-class FormulaNode {
-  constructor(formulaString) {
-    let curOpen = formulaString.indexOf('('),
-      lastOpen = null,
-      stillOpen = 1,
-      i = 0;
-      for(i = firstOpen + 1; i < formulaString.length; i++){
-        if(formulaString[i] == '(') {
-          stillOpen++;
-        }
-        if(formulaString[i] == ')') {
-          stillOpen--;
-        }
+    function invert(v) {
+      return [1 / v[0], 1 / v[1], 1 / v[2]];
+    }
+   class Objectt {
+      constructor() { }
+      toString() {
+        throw "No string for empty formula";
       }
-      if(stillOpen == 0) {
-        lastOpen = i-1;
-      }
-      
-  }
-}
-class Objectt {
-  constructor() {}
-  toString() {
-    throw "No string for empty formula";
-  }
-}
-function toFloat(n) {
-if(Number.isInteger(n)){
-        return n+'.0';
+    }
+    function toFloat(n) {
+      if (Number.isInteger(n)) {
+        return n + '.0';
       } else {
         return n;
       }
-}
-function toVec3(arr) {
-  let str = arr
-    .map(toFloat).reduce((s, a)=>s+a+',',`vec3(`);
-  str = str.substring(0, str.length-1);
-  str+=')';
-  return str;
-}
-class Sphere extends Objectt {
-  constructor(center, r) {
-    super();
-    this.pos = center;
-    this.radius = r;
-  }
-  toString() {
-    return `length(p + ${toVec3(this.pos)}) - ${toFloat(this.radius)}`;
-  }
-}
-let sphere1 = new Sphere([0, 0, 0], 1);
-class Plane extends Objectt {
-  constructor() { super();}
-  toString() {
-    return 'p.y';
-  }
-}
-
-let plane1 = new Plane().toString();
-class Cube extends Objectt {
-  constructor(pos, size) {
-    this.pos = pos;
-    this.size = size;
-  }
-}
-class ObjectUnion {
-  constructor(list_) {
-    if(list_< 2) {
-      throw "Cant get union of < 2 objects";
     }
-    this.list = list_;
-  }
-  toString() {
-    let str = '', n = this.list.length;
-    for(let i = 0; i< n-2; i++) {
-      str+=`min(${this.list[i].toString()}, `;
+    function toVec3(arr) {
+      let str = arr
+        .map(toFloat).reduce((s, a) => s + a + ',', `vec3(`);
+      str = str.substring(0, str.length - 1);
+      str += ')';
+      return str;
     }
-    str += `min(${this.list[n-2].toString()}, ${this.list[n-1]}`;
-    str += ')'.repeat(n-1);
-    return str;
-  }
-}
-let spheres1 = [];
-for(let i = 0; i < 10; i++) {
-  spheres1.push(new Sphere([Math.random()*16-8,Math.random()*16-8,Math.random()*16-8],Math.random()*2+0.2));
-}
-spheres1.push(plane1);
-let u1 = new ObjectUnion([plane1, sphere1]);
-let u2 = new ObjectUnion(spheres1);
+    class Sphere extends Objectt {
+      constructor(center, r) {
+        super();
+        this.pos = center;
+        this.radius = r;
+      }
+      toString() {
+        return `length(p + ${toVec3(this.pos)}) - ${toFloat(this.radius)}`;
+      }
+    }
+    let sphere1 = new Sphere([0, 0, 0], 1);
+    class Plane extends Objectt {
+      constructor() { super(); }
+      toString() {
+        return 'p.y';
+      }
+    }
 
-class ObjectIntersect {
-}
-class ObjectDifference {
-
-}
-function loadUniformAllObjects() {
-  for (let i = 0; i < basicObjectList.length; i++) {
-    loadUniformObject(i, i);
-  }
-}
-
-function getFile(fname) {
-  return new Promise(function(resolve, reject) {
-    var client = new XMLHttpRequest();
-    client.open('GET', fname);
-    client.onreadystatechange = function() {
-      if (client.readyState == 4) {
-        if (client.status == 200) {
-          resolve(client.responseText);
-        } else {
-          reject("Unable to load file " + fname);
+    let plane1 = new Plane().toString();
+    class Cube extends Objectt {
+      constructor(pos, size) {
+        this.pos = pos;
+        this.size = size;
+      }
+    }
+    class ObjectUnion {
+      constructor(list_) {
+        if (list_ < 2) {
+          throw "Cant get union of < 2 objects";
         }
+        this.list = list_;
+      }
+      toString() {
+        let str = '', n = this.list.length;
+        for (let i = 0; i < n - 2; i++) {
+          str += `min(${this.list[i].toString()}, `;
+        }
+        str += `min(${this.list[n - 2].toString()}, ${this.list[n - 1]}`;
+        str += ')'.repeat(n - 1);
+        return str;
       }
     }
-    client.send();
-  })
-}
+    let spheres1 = [];
+    for (let i = 0; i < 10; i++) {
+      spheres1.push(new Sphere([Math.random() * 16 - 8, Math.random() * 16 - 8, Math.random() * 16 - 8], Math.random() * 2 + 0.2));
+    }
+    spheres1.push(plane1);
+    let u1 = new ObjectUnion([plane1, sphere1]);
+    let u2 = new ObjectUnion(spheres1);
 
-// Setup canvas
-function getCanvas() {
-  canvas = document.getElementById("canvasId");
-  canvas.width = window.innerWidth/1.1;
-  canvas.height= window.innerHeight/1.1;
-  canvas.addEventListener('webglcontextlost', function(event) {
-    event.preventDefault();
-  }, false);
-  canvas.addEventListener('webglcontextrestored', function() {
-    init();
-  }, false);
-}
+    class ObjectIntersect {
+    }
+    class ObjectDifference {
 
-function onload() {
-  input = document.getElementById("inputEl");
-  drawStopped = false;
-  return getFile("VertexShader.glsl")
-    .then(function(contents) {
-      VertexShader = contents;
-      return getFile("FragmentShaderDrawFramebuffer.glsl");
-    }).then(function(contents) {
-      FragmentShaderDrawFramebuffer = contents;
-      return getFile("FragmentShaderRaymarch.glsl");
-    }).then(function(contents) {
-      FragmentShaderRaymarch = contents.replace("OBJECTS_MAX_TOKEN", basicObjectList.length);
-      FragmentShaderRaymarch = contents.replace("TOKEN_FORMULA", RayMarchFormula || "p.y");
-      getCanvas();
+    }
+
+    function getFile(fname) {
+      return new Promise(function (resolve, reject) {
+        var client = new XMLHttpRequest();
+        client.open('GET', fname);
+        client.onreadystatechange = function () {
+          if (client.readyState == 4) {
+            if (client.status == 200) {
+              resolve(client.responseText);
+            } else {
+              reject("Unable to load file " + fname);
+            }
+          }
+        }
+        client.send();
+      })
+    }
+      function getImage() {
+        return new Promise((res, rej) => {
+          raymarcher.onstop(() => {
+            var tmpCanvas = document.createElement("canvas");
+            tmpCanvas.width = canvas.width;
+            tmpCanvas.height = canvas.height;
+            tmpCanvas.getContext("2d").drawImage(canvas, 0, 0, tmpCanvas.width, tmpCanvas.height, 0, 0, tmpCanvas.width, tmpCanvas.height);
+            var result = tmpCanvas.toDataURL("image/png");
+            //$("#image-test")[0].src = result;
+            //console.log(result);
+            //$.post("/screenshot", { dataUrl: result });
+            setTimeout(()=>{raymarcher.start(); res(result)});
+          });
+          raymarcher.stop();
+        });
+      }
+    // Setup canvas
+    function getCanvas() {
+      canvas = document.getElementById("canvasId");
+      canvas.width = window.innerWidth / 1.1;
+      canvas.height = window.innerHeight / 1.1;
+      canvas.addEventListener('webglcontextlost', function (event) {
+        event.preventDefault();
+      }, false);
+      canvas.addEventListener('webglcontextrestored', function () {
+        init();
+      }, false);
+    }
+    function onload() {
+      input = document.getElementById("inputEl");
+      return getFile("VertexShader.glsl")
+        .then(function (contents) {
+          VertexShader = contents;
+          return getFile("FragmentShaderDrawFramebuffer.glsl");
+        }).then(function (contents) {
+          FragmentShaderDrawFramebuffer = contents;
+          return getFile("FragmentShaderRaymarch.glsl");
+        }).then(function (contents) {
+          FragmentShaderRaymarch = contents.replace("TOKEN_FORMULA", RayMarchFormula || "p.y");
+          getCanvas();
+          return getContext("canvasId");
+        }).then((glContext_) => {
+          // Get context
+          gl = glContext_;
+
+          // For Float32 RGB Geometry texture
+          //gl.getExtension('OES_texture_float');
+          //gl.getExtension('OES_texture_float_linear');
+
+          gl.clearColor(0.85, 0.95, 0.95, 1);
+
+          raymarcher = new RayMarcher();
+          return raymarcher.promise();
+        }).then(function () {
+          // Begin animation
+          raymarcher.draw();
+          updateInterval = setInterval(update, 10);
+          console.log(updateInterval);
+        }).then(function () {
+          return new Promise((res, rej) => {
+            $.get(
+              '/list',
+              res,
+              res,
+              'json'
+            ).fail(rej);
+          });
+        }).then((formulas) => {
+          formulaList = formulas;
+        });
+    }
+
+    class RayMarcher {
+      constructor() {
+        // should be onnextstopList
+        this.onstopList = [];
+        // Create geometry texture if needed
+        //                createGeometryTexture();
+        this.promiseObject = getProgram(VertexShader, FragmentShaderRaymarch)
+          .then((program_) => {
+            this.program = program_;
+            this.data = [-1, -1, -1, 1, 1, 1, 1, -1];
+            this.buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.data), gl.STATIC_DRAW);
+
+            // glprog - global variable used in webgl-fmi.js
+            glprog = this.program;
+            gl.useProgram(this.program);
+            this.stopped = false;
+            gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
+
+            getVariables();
+            //loadUniformAllObjects();
+
+            zoom = 20 + 7 * Math.cos(updates / 300);
+
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+
+            // Camera position
+            lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
+
+            //                gl.uniform1i(u_geometry_tex, 0);
 
 
-      return getContext("canvasId");
-    }).then((glContext_)=>{
-      // Get context
-      gl = glContext_;
+            gl.enableVertexAttribArray(aXY);
+            gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
+            //                gl.uniform1f(iCameraDist, zoomCur);
+            gl.uniform1f(uFOV, 45.);
+            gl.uniform1i(uUseAmbient, true);
+            gl.uniform1i(uUseDiffuse, true);
+            gl.uniform1i(uUseSpecular, true);
+            gl.uniform2fv(uRes, [canvas.width, canvas.height]);
+          });
+      }
 
-      // For Float32 RGB Geometry texture
-      //gl.getExtension('OES_texture_float');
-      //gl.getExtension('OES_texture_float_linear');
+      promise() {
+        return this.promiseObject;
+      }
+      // Starts redraw function
+      draw() {
+        let B = this.buf;
+        let redraw = () => {
+          // RayMarcher animation function
+          gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
+          gl.uniform1f(iTime, updates / 20);
 
-      gl.enable(gl.DEPTH_TEST);
-      gl.clearColor(0.85, 0.95, 0.95, 1);
+          lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
 
-      raymarcher = new RayMarcher();
+          zoom = 20 + 7 * Math.cos(updates / 300);
 
-      return raymarcher.promise();
-    }).then(function() {
-      // Begin animation
-      drawFrame();
-      updateInterval = setInterval(update, 10);
-    }).then(function() {
-      return new Promise((res, rej)=>{
-        $.get(
-          '/list',
-          res,
-          res,
-          'json'
-        ).fail(rej);
-      });
-    }).then((formulas) => {
-      formulaList = formulas;
-    });
-}
+          gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 
-class RayMarcher {
-  constructor() {
-    // Create geometry texture if needed
-    //                createGeometryTexture();
-    this.promiseObject = getProgram(VertexShader, FragmentShaderRaymarch)
-      .then((program_)=>{
-        this.program = program_;
-        this.data = [-1, -1, -1, 1, 1, 1, 1, -1];
-        this.buf = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.data), gl.STATIC_DRAW);
-
-        // glprog - global variable used in webgl-fmi.js
-        glprog = this.program;
-        gl.useProgram(this.program);
+          if (!this.stopped) {
+            requestAnimationFrame(redraw);
+          } else {
+            if(typeof this.onstopList.length != 0) {
+              for (let f of this.onstopList) {
+                f();
+              }
+              this.onstopList = [];
+            }
+          }
+        }
+        redraw();
+      }
+      onstop(cb) {
+        this.onstopList.push(cb);
+      }
+      start() {
         this.stopped = false;
-      gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
-
-      getVariables();
-      //loadUniformAllObjects();
-
-      zoom = 20 + 7 * Math.cos(updates / 300);
-
-      gl.viewport(0, 0, canvas.width, canvas.height);
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
-
-      // Camera position
-      lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
-
-      //                gl.uniform1i(u_geometry_tex, 0);
-
-
-      gl.enableVertexAttribArray(aXY);
-      gl.vertexAttribPointer(aXY, 2, gl.FLOAT, false, 0 * FLOATS, 0 * FLOATS);
-      //                gl.uniform1f(iCameraDist, zoomCur);
-      gl.uniform1f(uFOV, 45.);
-      gl.uniform1i(uUseAmbient, true);
-      gl.uniform1i(uUseDiffuse, true);
-      gl.uniform1i(uUseSpecular, true);
-      gl.uniform2fv(uRes, [canvas.width, canvas.height]);  
-      });
-  }
-
-  promise(cb) {
-    return this.promiseObject;
-  }
-  // Starts redraw function
-  draw() {
-    let B = this.buf;
-    let redraw = ()=> {
-      // RayMarcher animation function
-      
-      gl.uniform1f(iTime, updates / 20);
-
-      //                gl.uniform1i(uObjectsN, basicObjectList.length);
-      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-
-      if(!drawStopped) {
-        requestAnimationFrame(redraw);
+        console.log(this);
+        this.draw();
+      }
+      stop() {
+        this.stopped = true;
       }
     }
-    redraw();
-  }
-  start() {
-    this.draw();
-    this.stopped = false;
-  }
-  stop() {
-    this.stopped = true;
-  }
-}
 
-function drawFrame() {
-  gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
-  raymarcher.draw();
-}
+    function cloneArr(arr) {
+      let res = [];
+      for (let i = 0; i < arr.length; i++) {
+        res.push(arr[i]);
+      }
+      return res;
+    }
 
-function cloneArr(arr) {
-  let res = [];
-  for (let i = 0; i < arr.length; i++) {
-          res.push(arr[i]);
-          }
-          return res;
-          }
+    function update() {
+      //            let base = basicObjectList[0],
+      //                child1 = basicObjectList[1],
+      //                child2 = basicObjectList[2];
 
-          function update() {
-          //            let base = basicObjectList[0],
-          //                child1 = basicObjectList[1],
-          //                child2 = basicObjectList[2];
+      //            for (let i = 1; i < 5; i++) {
+      //                let cur = basicObjectList[i];
+      //                cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
+      //                cur.scale = [2, 2, 2];
+      //                let angle = i * (Math.PI * 2) / 5;
+      //                cur.pos = [Math.cos(updates / 200 + angle) * 6, Math.abs(Math.sin(updates / 100)) * 10 + 1, Math.sin(updates / 200 + angle) * 6];
+      //            }
+      //            basicObjectList[basicObjectList.length - 1].rot = [Math.sin(updates / 400) * Math.PI * 2, 0, 0];
+      updates++;
 
-          //            for (let i = 1; i < 5; i++) {
-          //                let cur = basicObjectList[i];
-          //                cur.rot = [0, Math.sin(updates / 50) * 0.5 * Math.PI, 0];
-          //                cur.scale = [2, 2, 2];
-          //                let angle = i * (Math.PI * 2) / 5;
-          //                cur.pos = [Math.cos(updates / 200 + angle) * 6, Math.abs(Math.sin(updates / 100)) * 10 + 1, Math.sin(updates / 200 + angle) * 6];
-          //            }
-          //            basicObjectList[basicObjectList.length - 1].rot = [Math.sin(updates / 400) * Math.PI * 2, 0, 0];
-          updates++;
+      zoomCur += (zoom - zoomCur) / 20;
+    }
+          function onFormulaInput() {
+            let dataUrl;
+            formula = input.value;
+            stopUpdate();
+            raymarcher.onstop(function () {
+              RayMarchFormula = formula || "p.y";
+              onload()
+                .then(getImage).then((d)=>{dataUrl=d})
+                .then(() => $.post(`/formula`, { formula: formula, dataUrl: dataUrl }))
+                .catch((err) => {
+                  // Stop draw and update functions
+                  //stopUpdate();
+                  //raymarcher.stop();
+                  console.log(err);
+                });
+            });
+            raymarcher.stop();
 
-          zoomCur += (zoom - zoomCur) / 20;
           }
-function onFormulaInput() {
-  formula = input.value;
-  drawStopped = true;
-  stopUpdate();
-  RayMarchFormula = formula || "p.y";
-  
-  new Promise((res, rej) => setTimeout(res, 500))
-    .then(()=>onload())
-  .then(()=>$.post(`/formula`, {formula:formula}))
-  .catch((err)=>{
-    // Stop draw and update functions
-      stopUpdate();
-      drawStupped = true;
-      console.log(err);
-    });
-}
-            function openhelp() {
-              document.getElementById("help").style.display = "inline-block";
-              document.getElementById("openhelpbtn").style.display = "none";
-          }
-          function closehelp() {
-          document.getElementById("help").style.display = "none";
-          document.getElementById("openhelpbtn").style.display= "inline-block";          
-          }
-          function closeFormulaList(e) {
-              
-          document.getElementById("formula-holder").innerHTML = '';
-          }
-function loadFormula(e) {
-  document.getElementById('inputEl').value = e.target.innerHTML;
-  onFormulaInput();
+    function openhelp() {
+      document.getElementById("help").style.display = "inline-block";
+      document.getElementById("openhelpbtn").style.display = "none";
+    }
+    function closehelp() {
+      document.getElementById("help").style.display = "none";
+      document.getElementById("openhelpbtn").style.display = "inline-block";
+    }
+    function closeFormulaList(e) {
 
-  closeFormulaList();
-}
-          function loadManyFormulas(list) {
-          document.getElementById("formula-holder").innerHTML = '';
-          for(let f of list) {
-            let element = document.createElement('li');
-            element.innerHTML = f;
-            element.onclick = loadFormula;
-          document.getElementById('formula-holder').appendChild(element);
-          }
-          let closeEl = document.createElement('li');
-          closeEl.innerHTML = 'CLOSE';
-          closeEl.onclick = function () {
-          document.getElementById("formula-holder").innerHTML = '';
-          }
-          document.getElementById('formula-holder').appendChild(closeEl);
-          }
+      document.getElementById("formula-holder").innerHTML = '';
+    }
+    function loadFormula(e) {
+      document.getElementById('inputEl').value = e.target.innerHTML;
+      onFormulaInput();
 
+      closeFormulaList();
+    }
+    function loadManyFormulas(list) {
+      document.getElementById("formula-holder").innerHTML = '';
+      for (let f of list) {
+        let element = document.createElement('li');
+        element.innerHTML = f;
+        element.onclick = loadFormula;
+        document.getElementById('formula-holder').appendChild(element);
+      }
+      let closeEl = document.createElement('li');
+      closeEl.innerHTML = 'CLOSE';
+      closeEl.onclick = function () {
+        document.getElementById("formula-holder").innerHTML = '';
+      }
+      document.getElementById('formula-holder').appendChild(closeEl);
+    }
   </script>
 </head>
 
 <body onload="onload();">
   <div style="position:absolute;top:0px;left:5%;width:85%; padding:0px;">
-    <textarea id="inputEl"type="text" placeholder="Enter GLSL signed distance function" style="font: 15px Courier New; font-weight: bold; width:80%; height:50px; margin:5px;" >-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1.), 0.3)</textarea>
-    <button onclick="onFormulaInput()" style="height:80px;width:50px;font:20px Courier New; color:black;display:inline-block;">GO</button>
+    <textarea id="inputEl" type="text" placeholder="Enter GLSL signed distance function"
+      style="font: 15px Courier New; font-weight: bold; width:80%; height:50px; margin:5px;">-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1.), 0.3)</textarea>
+    <button onclick="onFormulaInput()"
+      style="height:80px;width:50px;font:20px Courier New; color:black;display:inline-block;">GO</button>
 
-    <p onclick="closehelp()" id="help" style="background-color:white; font:18px Courier New;display:none;" >Parameters: p(vec3) <br>
-    Input expression returns distance between p(vec3) and 3d surface.<br>
-    <b>All standart GLSL function work:</b> e.g. mod, abs, length... <br>
-  <b>GLSL Cheat Sheet:</b> <a href="http://mew.cx/glsl_quickref.pdf">http://mew.cx/glsl_quickref.pdf</a><br>
-  <b>Variables:</b> float iTime, float PI<br>
-  <b>Built in functions:</b> sphere(vec3,float), planeY(vec3), roundd(float, float), cube(vec3, vec3), cyllinder(vec3, float, float), torus(vec3, float, float), torus2(vec3, float, float), intersect(float, float), unionn(float, float), difference(float, float), smin(float, float, float), translate(vec3, vec3), wobble(vec3), rotateX(vec3, float), rotateY(vec3, float), rotateZ(vec3, float), rotateP(vec3, vec3), scale(vec3, vec3), sphereField(vec3, float).<br>
-  <b>Click to close.</b> <br>
+    <p onclick="closehelp()" id="help" style="background-color:white; font:18px Courier New;display:none;">Parameters:
+      p(vec3) <br>
+      Input expression returns distance between p(vec3) and 3d surface.<br>
+      <b>All standart GLSL function work:</b> e.g. mod, abs, length... <br>
+      <b>GLSL Cheat Sheet:</b> <a href="http://mew.cx/glsl_quickref.pdf">http://mew.cx/glsl_quickref.pdf</a><br>
+      <b>Variables:</b> float iTime, float PI<br>
+      <b>Built in functions:</b> sphere(vec3,float), planeY(vec3), roundd(float, float), cube(vec3, vec3),
+      cyllinder(vec3, float, float), torus(vec3, float, float), torus2(vec3, float, float), intersect(float, float),
+      unionn(float, float), difference(float, float), smin(float, float, float), translate(vec3, vec3), wobble(vec3),
+      rotateX(vec3, float), rotateY(vec3, float), rotateZ(vec3, float), rotateP(vec3, vec3), scale(vec3, vec3),
+      sphereField(vec3, float).<br>
+      <b>Click to close.</b> <br>
     </p>
     <button id="openhelpbtn" onclick="openhelp()" style="display:inline-block;height:80px;width:50px;">???</button>
-    <button id="openformulasbtn" onclick="loadManyFormulas(formulaList)" style="display:inline-block;height:80px;width:50px;">LIST</button>
-    <ul id="formula-holder" style="background-color:white;font:20px Courier New;white-space:nowrap; overflow:hidden;text-overflow: ellipsis;">
+    <button id="openformulasbtn" onclick="loadManyFormulas(formulaList)"
+      style="display:inline-block;height:80px;width:50px;">LIST</button>
+    <ul id="formula-holder"
+      style="background-color:white;font:20px Courier New;white-space:nowrap; overflow:hidden;text-overflow: ellipsis;">
     </ul>
   </div>
+  <img id="image-test">
   <noscript>
     Искаме JavaScript, но няма!
   </noscript>

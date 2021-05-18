@@ -4,7 +4,7 @@ precision mediump float;
 
 
 // Constants
-const int MAX_MARCHING_STEPS = 50;
+const int MAX_MARCHING_STEPS = 60;
 const float MIN_DIST = 0.0;
 const float MAX_DIST = 70.0;
 const float EPSILON = 0.01;
@@ -54,9 +54,9 @@ uniform bool uUseSpecular;
 
 // Global variables
 // Holds index of object from uObjects
-int closestObjectIndex = -1;
+//int closestObjectIndex = -1;
 // Is an object from uObjects hit
-bool closestObjectCollision = false;
+//bool closestObjectCollision = false;
 // Whether or not to calculate phong lighting 
 bool usePhongLighting = false;
 vec3 viewDir;
@@ -235,13 +235,6 @@ float sceneSDF(vec3  p) {
     return TOKEN_FORMULA;
 }
 
-// Get ray direction by given pixel x,y
-vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
-    vec2 xy = fragCoord - size / 2.0;
-    float z = size.y / tan(radians(fieldOfView) / 2.0);
-    return normalize(vec3(xy, -z));
-}
-
 // Normal of scene surface at point p
 vec3 estimateNormal(vec3 p) {
     return normalize(vec3(
@@ -282,12 +275,13 @@ float raymarchDepth(vec3 p, vec3 dir, float begin_depth, float max_depth) {
     float depth = begin_depth;
     for(int i = 0; i < MAX_MARCHING_STEPS; i++) {
         float dist = sceneSDF(p + depth*dir);
-        if(dist > max_depth - EPSILON) {
+        depth = depth + dist*float((dist > max_depth - EPSILON) || (dist < EPSILON));
+        /*if(dist > max_depth - EPSILON) {
             return depth;
         }
         if(dist < EPSILON) {
             return depth;
-        }
+        }*/
         // We can safely march with distance to closest Object
         depth += dist;
     }
@@ -322,6 +316,13 @@ float raymarchDepth(vec3 p, vec3 dir, float begin_depth, float max_depth) {
 //    }
 //    return vec4(color, 1.);
 //}
+
+// Get ray direction by given pixel x,y
+vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
+    vec2 xy = fragCoord - size / 2.0;
+    float z = size.y / tan(radians(fieldOfView) / 2.0);
+    return normalize(vec3(xy, -z));
+} 
 void main() {
     vec2 fragCoord = (vXY + 0.5) * uRes;
     viewDir = rayDirection(uFOV, uRes, fragCoord);

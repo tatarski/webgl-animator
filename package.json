@@ -8,6 +8,7 @@
         "should": "^13.2.3"
     },
     "dependencies": {
-        "express": "^4.17.1"
+        "express": "^4.17.1",
+        "image-data-uri": "^2.0.1"
     }
 }
