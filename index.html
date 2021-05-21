@@ -1,12 +1,29 @@
 ﻿<!DOCTYPE html>
 
+</body>
+</html>
 <head>
   <meta charset="utf-8" />
   <title>Raymarching!</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
   <script src="webgl-fmi.js"></script>
   <script src="utility.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.61.0/codemirror.min.css" integrity="sha512-xIf9AdJauwKIVtrVRZ0i4nHP61Ogx9fSRAkCLecmE2dL/U8ioWpDvFCAy4dcfecN72HHB9+7FfQj3aiO68aaaw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.61.0/theme/3024-night.min.css" integrity="sha512-SbB0juc9/nEA5PEN7S+lnglc7wADe2DLKZKXn3D+eyebL06fTbFHNzgMlpX9oqFjWEKZ6uH7zNCUSv+j9Dpwpw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.61.0/codemirror.min.js" integrity="sha512-LwxFyHyqmDdcint8dhTSHeJuI+uH5r/vrcGkxH4QhHGP8SpNaS9MVa1BxZRNTb1GPyLBAWrjbWpZTPGgtDgJOw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.61.0/mode/clike/clike.min.js" integrity="sha512-m3ghu/xpRyZKDD9RVnxZIT8+lYTjrh7tAz7xbj94du1+3voHC2llSKQQOywnxkYzPcjexBUwf2nhGV9caxlEZw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.61.0/addon/edit/matchbrackets.min.js" integrity="sha512-rjbQerijlYZoHtP8XJGb7xkwnSRUHiydD8NE9fpe01feRM5RDZSZ9Tia+a9hV2cFHMilO4hZaeeTc9ESiik9wQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.61.0/mode/javascript/javascript.min.js" integrity="sha512-vjRTsZb6KBcNtLlBmtWZhjcctZRmUI/G2kYJLDJIzE6EoDdruleHFjF4gzKXf5fsLD0oMEIW7Ol3dcpWdL98Tg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<style>
+  .CodeMirror {
+      font-size: 20px;
+  }
+</style>
   <script>
     let zoom = 20,
       zoomCur = 10;
@@ -25,15 +42,35 @@
     let raymarcher;
     let FRAGMENT_SHADER_CURRENT;
     let updateInterval;
+    let editor=null;
+    function initCodeEditor() {
+      editor = CodeMirror.fromTextArea(
+        document.getElementById('inputEl'),
+        {
+          lineNumbers: true,
+          lineWrapping: true,
+          smartIndent:true,
+          tabSize: 2,
+          indentWithTabs: false,
+          mode:'javascript',
+          theme:'3024-night',
+          matchBrackets:true,
+        });
+        if(window.innerWidth > 800) {
+          editor.setSize(490, window.innerHeight/1.05);
+        } else {
+          editor.setSize(window.innerWidth/1.05, 280);
+          document.getElementById('inputElHolder').style = "bottom:0px;left:0px;";
+        }
+    }
     function stopUpdate() {
-      console.log("asdf");
       clearInterval(updateInterval);
     }
     // Store the text of the glgs programs
-    let FragmentShaderDrawFramebuffer,
-      FragmentShaderRaymarch,
-      VertexShader,
-      RayMarchFormula = "p.y";
+    window.FragmentShaderRaymarchOriginal = null,
+    window.FragmentShaderRaymarch = null,
+      window.VertexShader = null,
+      window.RayMarchFormula = (localStorage.chosenFormula) || "return p.y;";
 
     let n = 5;
 
@@ -120,26 +157,33 @@
 
     }
 
-    function getFile(fname) {
+    // Does nothing if varname is a variable with some value
+    function getFile(fname, varname) {
       return new Promise(function (resolve, reject) {
-        var client = new XMLHttpRequest();
-        client.open('GET', fname);
-        client.onreadystatechange = function () {
-          if (client.readyState == 4) {
-            if (client.status == 200) {
-              resolve(client.responseText);
-            } else {
-              reject("Unable to load file " + fname);
+        if(window[varname]) {
+          resolve();
+        } else {
+          var client = new XMLHttpRequest();
+          client.open('GET', fname);
+          client.onreadystatechange = function () {
+            if (client.readyState == 4) {
+              if (client.status == 200) {
+                window[varname] = client.responseText;
+                resolve();
+              } else {
+                reject("Unable to load file " + fname);
+              }
             }
           }
+          client.send();
         }
-        client.send();
       })
     }
       function getImage() {
         return new Promise((res, rej) => {
           raymarcher.onstop(() => {
             var tmpCanvas = document.createElement("canvas");
+
             tmpCanvas.width = canvas.width;
             tmpCanvas.height = canvas.height;
             tmpCanvas.getContext("2d").drawImage(canvas, 0, 0, tmpCanvas.width, tmpCanvas.height, 0, 0, tmpCanvas.width, tmpCanvas.height);
@@ -155,8 +199,13 @@
     // Setup canvas
     function getCanvas() {
       canvas = document.getElementById("canvasId");
-      canvas.width = window.innerWidth / 1.1;
-      canvas.height = window.innerHeight / 1.1;
+      if(window.innerWidth > 800) {
+          canvas.width= window.innerWidth/1.05 - 500;
+          canvas.height =  window.innerHeight/1.05-20;
+        } else {
+          canvas.width = window.innerWidth/1.05;
+          canvas.height = window.innerHeight/1.05-300;
+        }
       canvas.addEventListener('webglcontextlost', function (event) {
         event.preventDefault();
       }, false);
@@ -166,15 +215,13 @@
     }
     function onload() {
       input = document.getElementById("inputEl");
-      return getFile("VertexShader.glsl")
-        .then(function (contents) {
-          VertexShader = contents;
-          return getFile("FragmentShaderDrawFramebuffer.glsl");
-        }).then(function (contents) {
-          FragmentShaderDrawFramebuffer = contents;
-          return getFile("FragmentShaderRaymarch.glsl");
-        }).then(function (contents) {
-          FragmentShaderRaymarch = contents.replace("TOKEN_FORMULA", RayMarchFormula || "p.y");
+      input.value = localStorage.chosenFormula || input.value;
+
+      localStorage.removeItem('chosenFormula');
+      return getFile("VertexShader.glsl", 'VertexShader')
+        .then(()=>getFile("FragmentShaderRaymarch.glsl", 'FragmentShaderRaymarchOriginal'))
+        .then(function () {
+          FragmentShaderRaymarch = FragmentShaderRaymarchOriginal.replace("TOKEN_FORMULA", RayMarchFormula);
           getCanvas();
           return getContext("canvasId");
         }).then((glContext_) => {
@@ -185,7 +232,6 @@
           //gl.getExtension('OES_texture_float');
           //gl.getExtension('OES_texture_float_linear');
 
-          gl.clearColor(0.85, 0.95, 0.95, 1);
 
           raymarcher = new RayMarcher();
           return raymarcher.promise();
@@ -231,15 +277,15 @@
             getVariables();
             //loadUniformAllObjects();
 
-            zoom = 20 + 7 * Math.cos(updates / 300);
 
             gl.viewport(0, 0, canvas.width, canvas.height);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
 
             // Camera position
-            lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
+            //lookAt([zoomCur * cos(updates / (200)), zoomCur / 2, zoomCur * sin(updates / (200))], [0, 0, 0], [0, 1, 0]);
 
+            gl.clearColor(0.85, 0.95, 0.95, 1);
             //                gl.uniform1i(u_geometry_tex, 0);
 
 
@@ -324,10 +370,11 @@
     }
           function onFormulaInput() {
             let dataUrl;
-            formula = input.value;
+            formula = editor.getValue() || 'return p.y;'
             stopUpdate();
             raymarcher.onstop(function () {
-              RayMarchFormula = formula || "p.y";
+              RayMarchFormula = formula;
+              input.value = RayMarchFormula;
               onload()
                 .then(getImage).then((d)=>{dataUrl=d})
                 .then(() => $.post(`/formula`, { formula: formula, dataUrl: dataUrl }))
@@ -377,13 +424,9 @@
   </script>
 </head>
 
-<body onload="onload();">
-  <div style="position:absolute;top:0px;left:5%;width:85%; padding:0px;">
-    <textarea id="inputEl" type="text" placeholder="Enter GLSL signed distance function"
-      style="font: 15px Courier New; font-weight: bold; width:80%; height:50px; margin:5px;">-smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1.), 0.3)</textarea>
-    <button onclick="onFormulaInput()"
-      style="height:80px;width:50px;font:20px Courier New; color:black;display:inline-block;">GO</button>
-
+<body onload="onload();initCodeEditor();" style="background-color:#000;padding:0px;margin:0px;">
+  <div style="top:0px;left:5%;width:85%; padding:0px;display:inline-block;margin:0px;">
+        <!--
     <p onclick="closehelp()" id="help" style="background-color:white; font:18px Courier New;display:none;">Parameters:
       p(vec3) <br>
       Input expression returns distance between p(vec3) and 3d surface.<br>
@@ -397,19 +440,25 @@
       sphereField(vec3, float).<br>
       <b>Click to close.</b> <br>
     </p>
-    <button id="openhelpbtn" onclick="openhelp()" style="display:inline-block;height:80px;width:50px;">???</button>
-    <button id="openformulasbtn" onclick="loadManyFormulas(formulaList)"
-      style="display:inline-block;height:80px;width:50px;">LIST</button>
-    <ul id="formula-holder"
-      style="background-color:white;font:20px Courier New;white-space:nowrap; overflow:hidden;text-overflow: ellipsis;">
-    </ul>
-  </div>
-  <img id="image-test">
+    
+    -->
   <noscript>
     Искаме JavaScript, но няма!
   </noscript>
 
-  <canvas id="canvasId" style="border: solid;">
+    <canvas id="canvasId" style="border: solid;margin:0px;padding:0px;">
     Искаме canvas, но няма!
   </canvas>
+</div>
+  <div id="inputElHolder" style="position: fixed; top:0px;right:0px; width:500px; max-width:600px;height:100%;margin:0px; padding:0px;text-align: left;display:inline-block;">
+    <textarea id="inputEl" type="text" placeholder="Enter GLSL signed distance function" style="display:inline-block; padding:0px; margin:0px;"
+      >return -smin(-unionn(p.y, cube(translate(p,vec3(0., -4., 0.)), vec3(4., 4., 2.))), sphereField(p, 1.), 0.3);</textarea>
+  </div>
+<button onclick="onFormulaInput()"
+      style="position:fixed;right:20px;bottom:20px;height:80px;width:90px;font:20px Courier New; color:black;display:inline-block;">RENDER</button>
+    <a href="/galery"> <button id="openformulasbtn"
+      style="position:fixed;bottom:20px; right:130px;display:inline-block;height:80px;width:90px;">LIST</button></a>
+
+</div>
+
 </body>

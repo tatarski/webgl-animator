@@ -7,7 +7,7 @@ precision mediump float;
 const int MAX_MARCHING_STEPS = 60;
 const float MIN_DIST = 0.0;
 const float MAX_DIST = 70.0;
-const float EPSILON = 0.01;
+const float EPSILON = 0.005;
 const float PI = 3.14159265359;
 in vec2 vXY;
 out vec4 myOutputColor;
@@ -232,7 +232,7 @@ float sphereField(vec3 p, float r) {
 //    return dist;
 //}
 float sceneSDF(vec3  p) {
-    return TOKEN_FORMULA;
+    TOKEN_FORMULA;
 }
 
 // Normal of scene surface at point p
@@ -329,7 +329,7 @@ void main() {
     viewToWorld = viewMatrix(uEye, uFocus, uUp);
     worldDir = (viewToWorld*vec4(viewDir, 0.0)).xyz;
     
-    lightPos = vec3(sin(iTime/20.)*10., 5., cos(iTime/20.)*10.);
+    lightPos = vec3(sin(iTime/20.)*10., 10., cos(iTime/20.)*10.);
     iTime;
     float depth = raymarchDepth(uEye, worldDir, MIN_DIST, MAX_DIST);
     // Which color has been hit

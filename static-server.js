@@ -17,16 +17,18 @@ app.get('/list', (req, res) => {
   res.status(200);
   res.send(formulaList);
 });
+app.get('/galery', (req, res) => {
+  res.status(200);
+  res.sendFile(__dirname + '/list.html');
+});
 app.post('/formula', (req, res) => {
   let formula = req.body.formula;
   let dataUrl = req.body.dataUrl;
-  let fileName = `/images/${formulaList.length}.png`;
-  ImageDataURI.outputFile(dataUrl, fileName);
-
-  if(formulaList.indexOf(formula) == -1) {
-    console.log(formula);
-    formulaList.push(formula);
-    console.log(formulaList);
+  let fileName = `./public/images/${formulaList.length}.png`;
+  let fileNameClientSide = `./images/${formulaList.length}.png`
+  if(formulaList.map((e)=>e.formula).indexOf(formula) == -1) {
+    formulaList.push({formula:formula, imagename:fileNameClientSide});
+    ImageDataURI.outputFile(dataUrl, fileName);
     fs.writeFile('formulas.json', JSON.stringify(formulaList), 'utf8', (err)=>{
       if(err) {
         console.log(err);
